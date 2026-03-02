@@ -95,11 +95,11 @@ export default function DashboardPage() {
       }
     })
 
-    const totalMasukSyahriah = pembayaranList.reduce((a, b) => a + b.jumlah_bayar, 0)
-    const totalMasukOps = operasionalList.filter(o => o.jenis === 'pemasukan').reduce((a, b) => a + b.nominal, 0)
-    const totalKeluarOps = operasionalList.filter(o => o.jenis === 'pengeluaran').reduce((a, b) => a + b.nominal, 0)
+    const totalMasukSyahriah = pembayaranList.reduce((a: any, b: any) => a + b.jumlah_bayar, 0)
+    const totalMasukOps = operasionalList.filter((o: any) => o.jenis === 'pemasukan').reduce((a: any, b: any) => a + b.nominal, 0)
+    const totalKeluarOps = operasionalList.filter((o: any) => o.jenis === 'pengeluaran').reduce((a: any, b: any) => a + b.nominal, 0)
 
-    setStats({
+    setStats({  
       totalSantri: santriData.length,
       totalPemasukan: totalMasukSyahriah + totalMasukOps,
       totalPengeluaran: totalKeluarOps,
