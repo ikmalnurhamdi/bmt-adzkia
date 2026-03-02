@@ -47,19 +47,19 @@ export default function DashboardPage() {
     const operasionalList = operasionalRes.data || []
 
     const payMap = new Map()
-    pembayaranList.forEach(p => {
+    pembayaranList.forEach((p: any) => {
       const key = `${p.santri_id}-${p.bulan}-${p.tahun}-${p.kategori}`
       payMap.set(key, (payMap.get(key) || 0) + p.jumlah_bayar)
     })
 
     const tarifMap = new Map()
-    masterTarif.forEach(t => {
+    masterTarif.forEach((t: any) => {
       tarifMap.set(`${t.komponen}-${t.angkatan}`, t.nominal)
     })
 
     let totalAkumulasiTunggakan = 0
 
-    santriData.forEach(s => {
+    santriData.forEach((s: any) => {
       const tglRef = s.tanggal_mulai_tagihan ? new Date(s.tanggal_mulai_tagihan) : new Date(s.tanggal_masuk)
       const thnStart = tglRef.getFullYear()
       const blnStart = tglRef.getMonth() + 1
