@@ -297,8 +297,8 @@ export default function LaporanKeuanganPage() {
               </div>
               
               <div className="space-y-4">
-                <InputGroup label="Tanggal Transaksi" type="date" value={formData.tanggal} onChange={(v) => setFormData({...formData, tanggal: v})} />
-                <InputGroup label="Nominal (IDR)" type="number" value={formData.nominal} onChange={(v) => setFormData({...formData, nominal: v})} />
+                <InputGroup label="Tanggal Transaksi" type="date" value={formData.tanggal} onChange={(v: any) => setFormData({...formData, tanggal: v})} />
+                <InputGroup label="Nominal (IDR)" type="number" value={formData.nominal} onChange={(v: any) => setFormData({...formData, nominal: v})} />
                 <div className="space-y-1.5">
                   <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Keterangan / Deskripsi</label>
                   <textarea required className="w-full px-4 py-3 border border-slate-200 rounded-2xl text-[11px] font-bold outline-none focus:border-slate-900 min-h-[100px] bg-slate-50 uppercase shadow-inner" value={formData.keterangan} onChange={(e) => setFormData({...formData, keterangan: e.target.value})} />
