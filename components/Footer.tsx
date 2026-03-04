@@ -32,8 +32,8 @@ export default function Footer() {
             <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">
               Developed By
             </p>
-            <p className="text-[10px] font-black text-sky-700 uppercase tracking-tighter">
-              Ikmal Nurhamdi
+            <p className="text-[10px] font-black text-sky-700  tracking-tighter">
+              NurhaDev
             </p>
           </div>
         </div>
