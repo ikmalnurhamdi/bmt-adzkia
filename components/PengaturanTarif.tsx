@@ -1,198 +1,171 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Settings, Save, Coins, Loader2 } from "lucide-react"
+import { Settings, Save, Coins, Loader2, LayoutGrid, AlertCircle } from "lucide-react"
 import { getSupabase } from "@/lib/supabase"
 import Swal from "sweetalert2"
 
 export default function PengaturanTarif() {
-  const [activeMode, setActiveMode] = useState<"2025" | "2026" | "khusus">("2026")
   const [isLoading, setIsLoading] = useState(false)
-  
-  // State Utama sesuai struktur tabel 'tarif'
-  const [tarifMts, setTarifMts] = useState({ dapur: 0, pesantren: 0, sekolah: 0 })
-  const [tarifMa, setTarifMa] = useState({ dapur: 0, pesantren: 0, sekolah: 0 })
-  const [tarifTakhosus, setTarifTakhosus] = useState({ dapur: 0, pesantren: 0 })
-  const [tarifPengabdian, setTarifPengabdian] = useState({ pesantren: 0 })
+  const [tarifData, setTarifData] = useState<any[]>([])
+
+  const getVal = (komponen: string) => tarifData.find(t => t.komponen === komponen)?.nominal || 0
+
+  const setVal = (komponen: string, nominal: number) => {
+    setTarifData(prev => {
+      const existing = prev.find(t => t.komponen === komponen)
+      if (existing) {
+        return prev.map(t => t.komponen === komponen ? { ...t, nominal } : t)
+      }
+      return [...prev, { komponen, nominal, angkatan: 2026 }]
+    })
+  }
 
   const loadTarifData = async () => {
     setIsLoading(true)
-    const supabase = getSupabase()
-    
-    // Kita ambil semua data tarif agar mudah dipetakan
-    const { data, error } = await supabase.from("tarif").select("*")
-
-    if (data) {
-      // Fungsi pembantu untuk mencari nominal
-      const getVal = (komponen: string, angkatan: number) => 
-        data.find(t => t.komponen === komponen && t.angkatan === angkatan)?.nominal || 0
-
-      // Map data ke state (Tahun 2025 & 2026)
-      const thn = activeMode === "khusus" ? 2025 : parseInt(activeMode)
-      
-      setTarifMts({
-        dapur: getVal("dapur", thn),
-        pesantren: getVal("pesantren", thn),
-        sekolah: getVal(`sekolah_mts`, thn)
-      })
-      setTarifMa({
-        dapur: getVal("dapur", thn),
-        pesantren: getVal("pesantren", thn),
-        sekolah: getVal(`sekolah_ma`, thn)
-      })
-      setTarifTakhosus({
-        dapur: getVal("dapur_takhosus", 2025),
-        pesantren: getVal("pesantren_takhosus", 2025)
-      })
-      setTarifPengabdian({
-        pesantren: getVal("pesantren_pengabdian", 2025)
-      })
-    }
+    const { data } = await getSupabase().from("tarif").select("*").eq("angkatan", 2026)
+    if (data) setTarifData(data)
     setIsLoading(false)
   }
 
-  useEffect(() => { loadTarifData() }, [activeMode])
+  useEffect(() => { loadTarifData() }, [])
 
-  const handleSave = async () => {
-    setIsLoading(true)
-    const supabase = getSupabase()
-    const thn = activeMode === "khusus" ? 2025 : parseInt(activeMode)
-    
-    // Siapkan data payload sesuai mode aktif
-    let payload: any[] = []
-    
-    if (activeMode !== "khusus") {
-      payload = [
-        { komponen: 'dapur', angkatan: thn, nominal: Number(tarifMts.dapur) },
-        { komponen: 'pesantren', angkatan: thn, nominal: Number(tarifMts.pesantren) },
-        { komponen: 'sekolah_mts', angkatan: thn, nominal: Number(tarifMts.sekolah) },
-        { komponen: 'sekolah_ma', angkatan: thn, nominal: Number(tarifMa.sekolah) },
-      ]
-    } else {
-      payload = [
-        { komponen: 'dapur_takhosus', angkatan: 2025, nominal: Number(tarifTakhosus.dapur) },
-        { komponen: 'pesantren_takhosus', angkatan: 2025, nominal: Number(tarifTakhosus.pesantren) },
-        { komponen: 'pesantren_pengabdian', angkatan: 2025, nominal: Number(tarifPengabdian.pesantren) },
-      ]
-    }
+ const handleSave = async () => {
+  setIsLoading(true);
 
-    try {
-      // Gunakan upsert: Jika komponen + angkatan sudah ada, update. Jika belum, insert.
-      // Pastikan di Supabase kolom 'komponen' dan 'angkatan' dijadikan UNIQUE constraint gabungan.
-      const { error } = await supabase.from("tarif").upsert(payload, { onConflict: 'komponen,angkatan' })
-      
-      if (error) throw error
-      
-      Swal.fire({ icon: 'success', title: 'Tarif Berhasil Diperbarui', timer: 1500, showConfirmButton: false })
-      loadTarifData()
-    } catch (err: any) {
-      Swal.fire("Gagal Menyimpan", err.message, "error")
-    } finally {
-      setIsLoading(false)
-    }
+  // KUNCI UTAMA: Kita buat array baru (payload) tanpa menyertakan 'id'
+  // Kita hanya ambil komponen, nominal, dan angkatan saja.
+  const payload = tarifData.map((item: any) => ({
+    komponen: item.komponen,
+    nominal: Number(item.nominal),
+    angkatan: 2026 
+  }));
+
+  try {
+    const { error } = await getSupabase()
+      .from("tarif")
+      .upsert(payload, { 
+        // Ini akan mencari data yang komponen & angkatannya sama untuk di-update
+        onConflict: 'komponen,angkatan' 
+      });
+
+    if (error) throw error;
+
+    Swal.fire({ 
+      icon: 'success', 
+      title: 'Tarif Berhasil Disimpan', 
+      text: 'Data telah disinkronkan dengan database.',
+      timer: 1500, 
+      showConfirmButton: false 
+    });
+    
+    // Refresh data agar tampilan terbaru muncul
+    loadTarifData(); 
+  } catch (err: any) {
+    Swal.fire("Gagal Menyimpan", err.message, "error");
+  } finally {
+    setIsLoading(false);
   }
+};
 
   return (
-    <div className="bg-white border border-slate-200 rounded-xl max-w-4xl mx-auto overflow-hidden shadow-sm text-black font-sans">
+    <div className="bg-white border border-slate-200 rounded-xl max-w-7xl mx-auto overflow-hidden shadow-sm text-black font-sans">
       <div className="bg-sky-900 p-5 text-white flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="p-2 bg-sky-800 rounded-lg">
-            <Settings size={20} className="text-yellow-400" />
-          </div>
+          <div className="p-2 bg-sky-800 rounded-lg"><Settings size={20} className="text-yellow-400" /></div>
           <div>
-            <h2 className="text-sm font-black uppercase tracking-widest">Parameter Biaya</h2>
-            <p className="text-[10px] text-sky-300 font-bold uppercase">Manajemen Tarif Syahriah</p>
+            <h2 className="text-sm font-black uppercase tracking-widest leading-none">Parameter Biaya Spesifik</h2>
+            <p className="text-[10px] text-sky-300 font-bold uppercase mt-1">Pengaturan Tarif per Kategori Santri</p>
           </div>
-        </div>
-        
-        <div className="flex bg-sky-950/50 rounded-xl p-1 border border-sky-700">
-          {(["2025", "2026", "khusus"] as const).map((mode) => (
-            <button 
-              key={mode}
-              onClick={() => setActiveMode(mode)} 
-              className={`px-4 py-1.5 text-[10px] font-black rounded-lg transition-all ${activeMode === mode ? 'bg-yellow-400 text-sky-900 shadow-sm' : 'text-sky-200 hover:text-white'}`}
-            >
-              {mode === 'khusus' ? 'KHUSUS' : `ANGK. ${mode}`}
-            </button>
-          ))}
         </div>
       </div>
 
-      <div className="p-8">
-        {isLoading ? (
-          <div className="py-20 flex flex-col items-center gap-3">
-            <Loader2 className="animate-spin text-sky-600" size={32} />
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Sinkronisasi Data...</p>
-          </div>
-        ) : activeMode === "khusus" ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-10 animate-in fade-in slide-in-from-bottom-2 duration-500">
-            <div className="space-y-5">
-              <div className="border-b-2 border-sky-900 pb-2 flex justify-between items-center">
-                <h3 className="text-[11px] font-black text-sky-900 uppercase tracking-tighter">Takhosus / Kuliah (2025)</h3>
-                <span className="text-[10px] font-black text-sky-700 bg-sky-50 px-2 py-0.5 rounded-full border border-sky-100">
-                  Total: Rp {(Number(tarifTakhosus.dapur) + Number(tarifTakhosus.pesantren)).toLocaleString()}
-                </span>
-              </div>
-              <InputTarif label="Uang Makan Takhosus" value={tarifTakhosus.dapur} onChange={(v:any) => setTarifTakhosus({...tarifTakhosus, dapur: v})} />
-              <InputTarif label="Syahriah Pesantren" value={tarifTakhosus.pesantren} onChange={(v:any) => setTarifTakhosus({...tarifTakhosus, pesantren: v})} />
-            </div>
+      <div className="p-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        
+        {/* SECTION 1: MTS GROUPS */}
+        <SectionHeader title="Kelompok MTS PLUS" iconColor="text-sky-600" />
+        
+        <CardTarif title="MTS PLUS (Lama)">
+          <InputTarif label="Dapur" value={getVal("dapur_mts")} onChange={(v:any) => setVal("dapur_mts", v)} />
+          <InputTarif label="Pesantren" value={getVal("pesantren_mts")} onChange={(v:any) => setVal("pesantren_mts", v)} />
+          <InputTarif label="Sekolah" value={getVal("sekolah_mts")} onChange={(v:any) => setVal("sekolah_mts", v)} />
+        </CardTarif>
 
-            <div className="space-y-5">
-              <div className="border-b-2 border-emerald-600 pb-2 flex justify-between items-center">
-                <h3 className="text-[11px] font-black text-emerald-900 uppercase tracking-tighter">Pengabdian (2025)</h3>
-                <span className="text-[10px] font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
-                  Total: Rp {Number(tarifPengabdian.pesantren).toLocaleString()}
-                </span>
-              </div>
-              <InputTarif label="Administrasi Pesantren" value={tarifPengabdian.pesantren} onChange={(v:any) => setTarifPengabdian({...tarifPengabdian, pesantren: v})} />
-              <p className="text-[9px] text-slate-400 italic leading-relaxed">Note: Santri pengabdian tidak dibebankan iuran dapur dan sekolah.</p>
-            </div>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-10 animate-in fade-in slide-in-from-bottom-2 duration-500">
-            <div className="space-y-5">
-              <div className="border-b-2 border-sky-900 pb-2 flex justify-between items-center">
-                <h3 className="text-[11px] font-black text-sky-900 uppercase tracking-tighter">Tarif Reguler MTS</h3>
-                <span className="text-[12px] font-black text-slate-900">Rp {(Number(tarifMts.dapur) + Number(tarifMts.pesantren) + Number(tarifMts.sekolah)).toLocaleString()}</span>
-              </div>
-              <InputTarif label="Uang Makan (Dapur)" value={tarifMts.dapur} onChange={(v:any) => setTarifMts({...tarifMts, dapur: v})} />
-              <InputTarif label="Syahriah Pesantren" value={tarifMts.pesantren} onChange={(v:any) => setTarifMts({...tarifMts, pesantren: v})} />
-              <InputTarif label="Iuran Sekolah (MTS)" value={tarifMts.sekolah} onChange={(v:any) => setTarifMts({...tarifMts, sekolah: v})} />
-            </div>
+        <CardTarif title="MTS PLUS REVISI">
+          <InputTarif label="Dapur" value={getVal("dapur_mts_revisi")} onChange={(v:any) => setVal("dapur_mts_revisi", v)} />
+          <InputTarif label="Pesantren" value={getVal("pesantren_mts_revisi")} onChange={(v:any) => setVal("pesantren_mts_revisi", v)} />
+          <InputTarif label="Sekolah" value={getVal("sekolah_mts_revisi")} onChange={(v:any) => setVal("sekolah_mts_revisi", v)} />
+        </CardTarif>
 
-            <div className="space-y-5">
-              <div className="border-b-2 border-yellow-500 pb-2 flex justify-between items-center">
-                <h3 className="text-[11px] font-black text-slate-900 uppercase tracking-tighter">Tarif Reguler MA</h3>
-                <span className="text-[12px] font-black text-slate-900">Rp {(Number(tarifMa.dapur) + Number(tarifMa.pesantren) + Number(tarifMa.sekolah)).toLocaleString()}</span>
-              </div>
-              <InputTarif label="Uang Makan (Dapur)" value={tarifMa.dapur} onChange={(v:any) => {
-                setTarifMa({...tarifMa, dapur: v})
-                setTarifMts({...tarifMts, dapur: v}) // Dapur biasanya sama per angkatan
-              }} />
-              <InputTarif label="Syahriah Pesantren" value={tarifMa.pesantren} onChange={(v:any) => {
-                setTarifMa({...tarifMa, pesantren: v})
-                setTarifMts({...tarifMts, pesantren: v}) // Pesantren biasanya sama per angkatan
-              }} />
-              <InputTarif label="Iuran Sekolah (MA)" value={tarifMa.sekolah} onChange={(v:any) => setTarifMa({...tarifMa, sekolah: v})} />
-            </div>
-          </div>
-        )}
+        <div className="lg:col-span-2 hidden lg:block"></div> {/* Spacer */}
+
+        {/* SECTION 2: MA GROUPS */}
+        <SectionHeader title="Kelompok MA PLUS" iconColor="text-orange-600" />
+
+        <CardTarif title="MA PLUS (Lama)">
+          <InputTarif label="Dapur" value={getVal("dapur_ma")} onChange={(v:any) => setVal("dapur_ma", v)} />
+          <InputTarif label="Pesantren" value={getVal("pesantren_ma")} onChange={(v:any) => setVal("pesantren_ma", v)} />
+          <InputTarif label="Sekolah" value={getVal("sekolah_ma")} onChange={(v:any) => setVal("sekolah_ma", v)} />
+        </CardTarif>
+
+        <CardTarif title="MA PLUS REVISI">
+          <InputTarif label="Dapur" value={getVal("dapur_ma_revisi")} onChange={(v:any) => setVal("dapur_ma_revisi", v)} />
+          <InputTarif label="Pesantren" value={getVal("pesantren_ma_revisi")} onChange={(v:any) => setVal("pesantren_ma_revisi", v)} />
+          <InputTarif label="Sekolah" value={getVal("sekolah_ma_revisi")} onChange={(v:any) => setVal("sekolah_ma_revisi", v)} />
+        </CardTarif>
+
+        <div className="lg:col-span-2 hidden lg:block"></div> {/* Spacer */}
+
+        {/* SECTION 3: KHUSUS & MANDIRI */}
+        <SectionHeader title="Kategori Khusus & Mandiri" iconColor="text-emerald-600" />
+
+        <CardTarif title="TAKHOSUS / KULIAH">
+          <InputTarif label="Dapur" value={getVal("dapur_takhosus")} onChange={(v:any) => setVal("dapur_takhosus", v)} />
+          <InputTarif label="Pesantren" value={getVal("pesantren_takhosus")} onChange={(v:any) => setVal("pesantren_takhosus", v)} />
+        </CardTarif>
+
+        <CardTarif title="PENGABDIAN">
+          <InputTarif label="Pesantren" value={getVal("pesantren_pengabdian")} onChange={(v:any) => setVal("pesantren_pengabdian", v)} />
+        </CardTarif>
+
+        <CardTarif title="KATEGORI LUAR">
+          <InputTarif label="MTS SAJA" value={getVal("MTS SAJA")} onChange={(v:any) => setVal("MTS SAJA", v)} />
+          <InputTarif label="MA SAJA" value={getVal("MA SAJA")} onChange={(v:any) => setVal("MA SAJA", v)} />
+          <InputTarif label="NON MUKIM" value={getVal("SANTRI NON MUKIM")} onChange={(v:any) => setVal("SANTRI NON MUKIM", v)} />
+        </CardTarif>
+
       </div>
       
       <div className="p-5 bg-slate-50 border-t border-slate-200 flex justify-between items-center">
         <div className="flex items-center gap-2 text-slate-400">
           <Coins size={16} />
-          <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Mata Uang: IDR (Rupiah)</span>
+          <span className="text-[10px] font-bold uppercase text-slate-500">Mata Uang: Rupiah (IDR)</span>
         </div>
         <button 
-          disabled={isLoading}
           onClick={handleSave}
-          className="bg-sky-900 hover:bg-black text-white font-black py-3 px-10 rounded-xl shadow-lg text-[11px] uppercase tracking-widest transition-all active:scale-95 flex items-center gap-2 disabled:opacity-50"
+          className="bg-sky-900 hover:bg-black text-white font-black py-3 px-8 rounded-xl shadow-lg text-[10px] uppercase transition-all flex items-center gap-2"
         >
-          {isLoading ? <Loader2 className="animate-spin" size={14}/> : <Save size={14} />} 
-          Simpan Data {activeMode.toUpperCase()}
+          <Save size={14} /> Simpan Perubahan Tarif
         </button>
       </div>
+    </div>
+  )
+}
+
+function SectionHeader({ title, iconColor }: { title: string, iconColor: string }) {
+  return (
+    <div className="md:col-span-2 lg:col-span-4 flex items-center gap-2 border-b border-slate-100 pb-2 mt-4">
+      <LayoutGrid size={16} className={iconColor} />
+      <h3 className={`text-[11px] font-black uppercase ${iconColor.replace('text', 'text-slate-800')}`}>{title}</h3>
+    </div>
+  )
+}
+
+function CardTarif({ title, children }: any) {
+  return (
+    <div className="bg-slate-50/50 p-4 rounded-xl border border-slate-100 space-y-3">
+      <h4 className="text-[9px] font-black text-sky-900 uppercase tracking-widest border-b border-slate-200 pb-1.5">{title}</h4>
+      {children}
     </div>
   )
 }
@@ -200,12 +173,12 @@ export default function PengaturanTarif() {
 function InputTarif({ label, value, onChange }: any) {
   return (
     <div className="group">
-      <label className="text-[10px] font-black text-slate-400 uppercase tracking-tight ml-1 group-focus-within:text-sky-600 transition-colors">{label}</label>
+      <label className="text-[8px] font-black text-slate-400 uppercase ml-1 group-focus-within:text-sky-600 transition-colors">{label}</label>
       <div className="relative mt-1 flex shadow-sm">
-        <span className="px-4 rounded-l-xl border border-r-0 border-slate-200 bg-slate-50 text-slate-400 text-[11px] flex items-center font-black">Rp</span>
+        <span className="px-2 rounded-l-lg border border-r-0 border-slate-200 bg-white text-slate-400 text-[9px] flex items-center font-black">Rp</span>
         <input 
           type="number" 
-          className="w-full px-4 py-2.5 border border-slate-200 rounded-r-xl text-sm font-black text-slate-800 focus:border-sky-600 focus:ring-4 focus:ring-sky-50 outline-none transition-all" 
+          className="w-full px-2 py-1.5 border border-slate-200 rounded-r-lg text-[11px] font-black text-slate-800 focus:border-sky-600 outline-none transition-all" 
           value={value} 
           onChange={(e) => onChange(e.target.value)} 
         />

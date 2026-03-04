@@ -26,7 +26,7 @@ export default function TunggakanPage() {
     const [resSantri, resBayar, resTarif] = await Promise.all([
       supabase.from("santri").select("*").order("nama_lengkap", { ascending: true }),
       supabase.from("transaksi_pembayaran_v2").select("*").eq("bulan", filterBulan).eq("tahun", filterTahun),
-      supabase.from("tarif").select("*")
+      supabase.from("tarif").select("*").eq("angkatan", 2026) 
     ])
 
     setSantriList(resSantri.data || [])
@@ -40,54 +40,68 @@ export default function TunggakanPage() {
     loadData()
   }, [loadData])
 
-  const getTargetDinamis = (santri: any, kategori: string) => {
+  // LOGIKA TARGET BERDASARKAN KOMPONEN DB & PERMINTAAN KHUSUS KOLOM
+  const getTargetDinamis = (santri: any, jenisKategori: string) => {
     if (!santri || masterTarif.length === 0) return 0
-    const jenjang = santri.jenjang?.toString().trim().toLowerCase()
-    let tahunReferensi = 2025 
-    const tglRef = santri.tanggal_mulai_tagihan ? new Date(santri.tanggal_mulai_tagihan) : new Date(santri.tanggal_masuk)
+    const k = santri.jenjang 
     
-    if (jenjang !== 'takhosus' && jenjang !== 'kuliah' && jenjang !== 'pengabdian') {
-      tahunReferensi = tglRef.getFullYear() < 2026 ? 2025 : tglRef.getFullYear()
-    }
+    const getNominal = (komp: string) => masterTarif.find(t => t.komponen === komp)?.nominal || 0
 
-    let komponenCari = kategori
-    if (jenjang === 'takhosus' || jenjang === 'kuliah') {
-      if (kategori === 'sekolah') return 0 
-      komponenCari = `${kategori}_takhosus`
-    } else if (jenjang === 'pengabdian') {
-      if (kategori !== 'pesantren') return 0
-      komponenCari = `pesantren_pengabdian`
-    } else {
-      if (kategori === 'sekolah') komponenCari = `sekolah_${jenjang}`
+    if (k === "MTS PLUS") {
+      if (jenisKategori === 'dapur') return getNominal("dapur_mts")
+      if (jenisKategori === 'pesantren') return getNominal("pesantren_mts")
+      if (jenisKategori === 'sekolah') return getNominal("sekolah_mts")
+    } 
+    else if (k === "MTS PLUS REVISI") {
+      if (jenisKategori === 'dapur') return getNominal("dapur_mts_revisi")
+      if (jenisKategori === 'pesantren') return getNominal("pesantren_mts_revisi")
+      if (jenisKategori === 'sekolah') return getNominal("sekolah_mts_revisi")
     }
-
-    const match = masterTarif.find(t => 
-      t.komponen?.toString().trim().toLowerCase() === komponenCari.toLowerCase() && 
-      t.angkatan === tahunReferensi
-    )
-    return match ? match.nominal : 0
+    else if (k === "MA PLUS") {
+      if (jenisKategori === 'dapur') return getNominal("dapur_ma")
+      if (jenisKategori === 'pesantren') return getNominal("pesantren_ma")
+      if (jenisKategori === 'sekolah') return getNominal("sekolah_ma")
+    }
+    else if (k === "MA PLUS REVISI") {
+      if (jenisKategori === 'dapur') return getNominal("dapur_ma_revisi")
+      if (jenisKategori === 'pesantren') return getNominal("pesantren_ma_revisi")
+      if (jenisKategori === 'sekolah') return getNominal("sekolah_ma_revisi")
+    }
+    else if (k === "TAKHOSUS/KULIAH") {
+      if (jenisKategori === 'dapur') return getNominal("dapur_takhosus")
+      if (jenisKategori === 'pesantren') return getNominal("pesantren_takhosus")
+      return 0
+    }
+    else if (k === "PENGABDIAN") {
+      if (jenisKategori === 'pesantren') return getNominal("pesantren_pengabdian")
+      return 0
+    }
+    else if (k === "MTS SAJA" || k === "MA SAJA") {
+      // PERMINTAAN: Masukan ke kolom sekolah
+      if (jenisKategori === 'sekolah') return getNominal(k)
+      return 0
+    }
+    else if (k === "SANTRI NON MUKIM") {
+      // PERMINTAAN: Masukan ke kolom pesantren
+      if (jenisKategori === 'pesantren') return getNominal(k)
+      return 0
+    }
+    return 0
   }
 
   const processedData = useMemo(() => {
     let totalMasuk = pembayaranList.reduce((a, b) => a + (b.jumlah_bayar || 0), 0)
     let totalTunggakan = 0
 
-    const sekarang = new Date()
-    const bulanSekarang = sekarang.getMonth() + 1
-    const tahunSekarang = sekarang.getFullYear()
-
     const list = santriList.map(s => {
       const tglReferensi = s.tanggal_mulai_tagihan ? new Date(s.tanggal_mulai_tagihan) : new Date(s.tanggal_masuk)
       const tglAwalWajib = new Date(tglReferensi.getFullYear(), tglReferensi.getMonth(), 1)
       const tglFilterAktif = new Date(filterTahun, filterBulan - 1, 1)
-
-      const isMasaDepan = filterTahun > tahunSekarang || (filterTahun === tahunSekarang && filterBulan > bulanSekarang)
       const isBelumWajibBayar = tglFilterAktif < tglAwalWajib
-      const tagihanHarusNol = isMasaDepan || isBelumWajibBayar
 
-      const targetD = tagihanHarusNol ? 0 : getTargetDinamis(s, "dapur")
-      const targetP = tagihanHarusNol ? 0 : getTargetDinamis(s, "pesantren")
-      const targetS = tagihanHarusNol ? 0 : getTargetDinamis(s, "sekolah")
+      const targetD = isBelumWajibBayar ? 0 : getTargetDinamis(s, "dapur")
+      const targetP = isBelumWajibBayar ? 0 : getTargetDinamis(s, "pesantren")
+      const targetS = isBelumWajibBayar ? 0 : getTargetDinamis(s, "sekolah")
 
       const bayarD = pembayaranList.filter(p => p.santri_id === s.id && p.kategori === "dapur").reduce((a, b) => a + b.jumlah_bayar, 0)
       const bayarP = pembayaranList.filter(p => p.santri_id === s.id && p.kategori === "pesantren").reduce((a, b) => a + b.jumlah_bayar, 0)
@@ -99,7 +113,6 @@ export default function TunggakanPage() {
       const totalSisa = sisaD + sisaP + sisaS
 
       if (totalSisa > 0) totalTunggakan += totalSisa
-
       return { ...s, sisaD, sisaP, sisaS, totalSisa }
     }).filter(res => 
       res.totalSisa > 0 && 
@@ -112,9 +125,9 @@ export default function TunggakanPage() {
   if (!mounted) return null
 
   return (
-    <div className="p-4 lg:p-8 space-y-6 animate-in fade-in duration-500">
+    <div className="p-4 lg:p-8 space-y-6 animate-in fade-in duration-500 text-black font-sans">
       
-      {/* 1. HEADER & SUMMARY CARDS */}
+      {/* HEADER & SUMMARY CARDS */}
       <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
         <div className="flex items-center gap-4">
           <div className="bg-red-50 p-3 rounded-2xl text-red-600 shadow-inner">
@@ -129,22 +142,22 @@ export default function TunggakanPage() {
         </div>
 
         <div className="flex items-center gap-4">
-          <div className="bg-emerald-50 border border-emerald-100 p-3 rounded-2xl min-w-[160px] shadow-sm">
-            <div className="flex items-center gap-2 text-emerald-600 mb-1">
-               <TrendingUp size={14} /> <span className="text-[8px] font-black uppercase">Realisasi</span>
+          <div className="bg-emerald-50 border border-emerald-100 p-3 rounded-2xl min-w-[160px] shadow-sm text-center">
+            <div className="flex items-center justify-center gap-2 text-emerald-600 mb-1">
+                <TrendingUp size={14} /> <span className="text-[8px] font-black uppercase">Pembayaran</span>
             </div>
             <p className="text-sm font-black text-emerald-700 tracking-tight">Rp {processedData.totalMasuk.toLocaleString()}</p>
           </div>
-          <div className="bg-red-50 border border-red-100 p-3 rounded-2xl min-w-[160px] shadow-sm">
-            <div className="flex items-center gap-2 text-red-600 mb-1">
-               <Wallet size={14} /> <span className="text-[8px] font-black uppercase">Outstanding</span>
+          <div className="bg-red-50 border border-red-100 p-3 rounded-2xl min-w-[160px] shadow-sm text-center">
+            <div className="flex items-center justify-center gap-2 text-red-600 mb-1">
+                <Wallet size={14} /> <span className="text-[8px] font-black uppercase">Tunggakan</span>
             </div>
             <p className="text-sm font-black text-red-700 tracking-tight">Rp {processedData.totalTunggakan.toLocaleString()}</p>
           </div>
         </div>
       </div>
 
-      {/* 2. TOOLBAR (FILTER & SEARCH) */}
+      {/* TOOLBAR */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-4">
         <div className="flex flex-wrap items-center gap-3 flex-1">
           <div className="relative w-full max-w-sm">
@@ -167,25 +180,24 @@ export default function TunggakanPage() {
             </select>
           </div>
         </div>
-        
-        <button onClick={() => loadData()} className="bg-white border-b-4 border-slate-200 hover:bg-slate-50 px-5 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all active:scale-95 shadow-sm">
+        <button onClick={() => loadData()} className="bg-white border-b-4 border-slate-200 hover:bg-slate-50 px-5 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all shadow-sm">
           Refresh Data
         </button>
       </div>
 
-      {/* 3. DATA TABLE */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      {/* DATA TABLE */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden text-black">
         <div className="overflow-x-auto max-h-[600px] overflow-y-auto custom-scrollbar">
           <table className="w-full text-left border-collapse">
             <thead className="bg-slate-900 text-white uppercase text-[9px] font-black tracking-widest sticky top-0 z-10">
               <tr>
                 <th className="px-6 py-4 border-r border-slate-800">Profil Santri</th>
-                <th className="px-4 py-4 text-center border-r border-slate-800">Kelas</th>
+                <th className="px-4 py-4 text-center border-r border-slate-800">Kategori</th>
                 <th className="px-4 py-4 text-right border-r border-slate-800">Dapur</th>
-                <th className="px-4 py-4 text-right border-r border-slate-800">Psntrn</th>
+                <th className="px-4 py-4 text-right border-r border-slate-800">Pesantren</th>
                 <th className="px-4 py-4 text-right border-r border-slate-800">Sekolah</th>
-                <th className="px-4 py-4 text-right bg-red-800 text-white">Total Tagihan</th>
-                <th className="px-6 py-4 text-center">Tindakan</th>
+                <th className="px-4 py-4 text-right bg-red-800 text-white font-black">Total Tagihan</th>
+                <th className="px-6 py-4 text-center">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -193,7 +205,7 @@ export default function TunggakanPage() {
                 <tr>
                   <td colSpan={7} className="py-32 text-center">
                     <Loader2 className="animate-spin mx-auto text-red-600 w-10 h-10" />
-                    <p className="text-[10px] font-black text-slate-400 uppercase mt-4 tracking-widest">Menghitung Tunggakan...</p>
+                    <p className="text-[10px] font-black text-slate-400 uppercase mt-4 tracking-widest">Sinkronisasi Tagihan...</p>
                   </td>
                 </tr>
               ) : processedData.list.length > 0 ? (
@@ -203,12 +215,18 @@ export default function TunggakanPage() {
                       <div className="font-black text-xs uppercase text-slate-900 leading-none">{s.nama_lengkap}</div>
                       <div className="text-[9px] font-bold text-slate-400 uppercase mt-1 italic">Wali: {s.nama_wali || "-"}</div>
                     </td>
-                    <td className="px-4 py-4 text-center font-black text-[10px] uppercase text-slate-500 border-r border-slate-50">
-                      {s.jenjang} - {s.kelas}
+                    <td className="px-4 py-4 text-center font-black text-[9px] uppercase text-sky-700 bg-sky-50/50 border-r border-slate-50">
+                      {s.jenjang}
                     </td>
-                    <td className="px-4 py-4 text-right font-bold text-xs border-r border-slate-50 text-slate-600">Rp {s.sisaD.toLocaleString()}</td>
-                    <td className="px-4 py-4 text-right font-bold text-xs border-r border-slate-50 text-slate-600">Rp {s.sisaP.toLocaleString()}</td>
-                    <td className="px-4 py-4 text-right font-bold text-xs border-r border-slate-50 text-slate-600">Rp {s.sisaS.toLocaleString()}</td>
+                    <td className="px-4 py-4 text-right font-bold text-xs border-r border-slate-50 text-slate-600">
+                      {s.sisaD > 0 ? `Rp ${s.sisaD.toLocaleString()}` : <span className="text-slate-200">-</span>}
+                    </td>
+                    <td className="px-4 py-4 text-right font-bold text-xs border-r border-slate-50 text-slate-600">
+                      {s.sisaP > 0 ? `Rp ${s.sisaP.toLocaleString()}` : <span className="text-slate-200">-</span>}
+                    </td>
+                    <td className="px-4 py-4 text-right font-bold text-xs border-r border-slate-50 text-slate-600">
+                      {s.sisaS > 0 ? `Rp ${s.sisaS.toLocaleString()}` : <span className="text-slate-200">-</span>}
+                    </td>
                     <td className="px-4 py-4 text-right font-black text-xs bg-red-50 text-red-700 border-r border-slate-50">
                       Rp {s.totalSisa.toLocaleString()}
                     </td>
@@ -219,8 +237,7 @@ export default function TunggakanPage() {
                           const pesan = `Assalamu'alaikum Bapak/Ibu ${s.nama_wali}. Mengingatkan tunggakan syahriah Ananda ${s.nama_lengkap} periode ${BULAN_NAMES[filterBulan-1]} sebesar Rp ${s.totalSisa.toLocaleString()}. Mohon segera diselesaikan. Syukran.`;
                           window.open(`https://wa.me/${phone}?text=${encodeURIComponent(pesan)}`, '_blank');
                         }} 
-                        className="bg-emerald-500 hover:bg-black text-white p-2.5 rounded-xl transition-all active:scale-95 shadow-md shadow-emerald-200 flex items-center justify-center mx-auto"
-                        title="Kirim Pengingat WA"
+                        className="bg-emerald-500 hover:bg-black text-white p-2.5 rounded-xl transition-all active:scale-95 shadow-md flex items-center justify-center mx-auto"
                       >
                         <MessageCircle size={18} />
                       </button>
@@ -231,7 +248,7 @@ export default function TunggakanPage() {
                 <tr>
                   <td colSpan={7} className="py-24 text-center">
                     <Inbox className="w-12 h-12 text-slate-200 mx-auto mb-3" />
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Alhamdulillah, semua lunas</p>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Semua santri sudah lunas</p>
                   </td>
                 </tr>
               )}
