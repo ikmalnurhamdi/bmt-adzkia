@@ -135,7 +135,7 @@ export default function DashboardPage() {
     <div className="p-4 lg:p-8 space-y-8 animate-in fade-in duration-500 font-sans text-black">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tighter leading-none">Dashboard AMAL</h2>
+          <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tighter leading-none">Dashboard</h2>
           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-2 flex items-center gap-2">
             <Activity size={12} className="text-sky-500" /> Akumulasi Data Keseluruhan
           </p>
