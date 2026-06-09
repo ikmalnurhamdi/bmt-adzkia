@@ -1,13 +1,14 @@
 "use client"
 
 import { useState, useEffect, useCallback, useMemo } from "react"
-import { getSupabase } from "@/lib/supabase"
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
 import { 
   Users, Wallet, Banknote, ReceiptText, 
   Activity 
 } from "lucide-react"
+import { getSupabase } from "@/lib/supabase"
 import { cn } from "@/lib/utils"
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
+
 
 // Import sub-komponen
 import ManajemenSantri from "@/components/ManajemenSantri"
@@ -50,7 +51,7 @@ export default function DashboardPage() {
       const key = `${p.santri_id}-${p.bulan}-${p.tahun}-${p.kategori}`
       payMap.set(key, (payMap.get(key) || 0) + p.jumlah_bayar)
     })
-
+    
     const tarifMap = new Map()
     masterTarif.forEach((t: any) => {
       tarifMap.set(t.komponen, t.nominal)
