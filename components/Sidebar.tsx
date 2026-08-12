@@ -5,7 +5,7 @@ import Image from "next/image"
 import { useRouter } from "next/navigation"
 import { 
   LayoutDashboard, Users, Wallet, 
-  Settings2, ChevronLeft, ChevronRight, AlertCircle, Utensils, Coins, BarChart3, X 
+  Settings2, ChevronLeft, ChevronRight, AlertCircle, Utensils, Coins, BarChart3, X, ClipboardList
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -180,6 +180,13 @@ export default function Sidebar({ activeTab, setActiveTab, isOpenMobile, setIsOp
               active={activeTab === "laporan-keuangan"} 
               collapsed={isCollapsed} 
               onClick={() => navigateTo("keuangan", "/laporan-keuangan")} 
+            />
+            <NavItem 
+              icon={<ClipboardList size={20}/>} 
+              label="Rekap Transaksi" 
+              active={activeTab === "rekap-transaksi"} 
+              collapsed={isCollapsed} 
+              onClick={() => navigateTo("rekap-transaksi", "/rekap-transaksi-santri")} 
             />
             
             <div className="pt-4 mt-4 border-t border-sky-400/20">
