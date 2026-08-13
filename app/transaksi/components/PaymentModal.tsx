@@ -19,13 +19,21 @@ export default function PaymentModal({ isOpen, onClose, santriList, onSuccessSav
   const [searchSantriInModal, setSearchSantriInModal] = useState("")
   const [selectedSantri, setSelectedSantri] = useState<any | null>(null)
   const [selectedTahunBayar, setSelectedTahunBayar] = useState(CURRENT_YEAR)
+  
+  // Ubah inisialisasi agar sesuai dengan format array (meskipun kita batasi ke 1 nanti)
   const [selectedBulanList, setSelectedBulanList] = useState<number[]>([new Date().getMonth() + 1])
+  
   const [keterangan, setKeterangan] = useState("")
   const [santriHistory, setSantriHistory] = useState<any[]>([])
   const [loadingHistory, setLoadingHistory] = useState(false)
 
+  // TAMBAHAN: nominal_lainnya
   const [nominals, setNominals] = useState({
-    nominal_dapur: "", nominal_pesantren: "", nominal_sekolah: "", nominal_total: ""
+    nominal_dapur: "", 
+    nominal_pesantren: "", 
+    nominal_sekolah: "", 
+    nominal_total: "",
+    nominal_lainnya: "" 
   })
 
   useEffect(() => {
@@ -47,25 +55,41 @@ export default function PaymentModal({ isOpen, onClose, santriList, onSuccessSav
   const filteredSantriForModal = useMemo(() => {
     if (!searchSantriInModal) return []
     return santriList.filter(s =>
-      s.nama_lengkap.toLowerCase().includes(searchSantriInModal.toLowerCase()) ||
+      s.nama_lengkap?.toLowerCase().includes(searchSantriInModal.toLowerCase()) ||
       (s.nis && s.nis.toString().includes(searchSantriInModal))
     ).slice(0, 6)
   }, [santriList, searchSantriInModal])
 
+  // PERBAIKAN: Logika pilih bulan
   const toggleBulan = (bulan: number) => {
-    setSelectedBulanList(prev => prev.includes(bulan) ? prev.filter(b => b !== bulan) : [...prev, bulan])
-  }
-
-  const toggleAllBulan = () => {
-    setSelectedBulanList(prev => prev.length === 12 ? [] : Array.from({ length: 12 }, (_, i) => i + 1))
+    setSelectedBulanList(prev => {
+      // Jika bulan yang diklik sama dengan yang sudah dipilih, kosongkan list (klik ganda)
+      if (prev.length === 1 && prev[0] === bulan) {
+        return []
+      }
+      // Jika tidak, ganti dengan bulan yang baru diklik
+      return [bulan]
+    })
   }
 
   const handleSimpanBayar = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!selectedSantri || selectedBulanList.length === 0) return
+    
+    if (!selectedSantri) {
+       Swal.fire("Perhatian", "Pilih santri terlebih dahulu.", "warning")
+       return
+    }
+
+    if (selectedBulanList.length === 0) {
+       Swal.fire("Perhatian", "Pilih bulan pembayaran.", "warning")
+       return
+    }
+
     setIsSubmitting(true)
 
     const allEntries: any[] = []
+    
+    // Karena sekarang array hanya berisi maksimal 1 elemen, loop ini hanya akan jalan 1x
     for (const bulan of selectedBulanList) {
       const baseData = { santri_id: selectedSantri.id, bulan, tahun: selectedTahunBayar, keterangan }
 
@@ -79,10 +103,15 @@ export default function PaymentModal({ isOpen, onClose, santriList, onSuccessSav
         if (Number(nominals.nominal_pesantren) > 0) allEntries.push({ ...baseData, kategori: 'pesantren', jumlah_bayar: Number(nominals.nominal_pesantren) })
         if (Number(nominals.nominal_sekolah) > 0) allEntries.push({ ...baseData, kategori: 'sekolah', jumlah_bayar: Number(nominals.nominal_sekolah) })
       }
+      
+      // TAMBAHAN: Eksekusi simpan untuk kategori 'lainnya' (berlaku untuk semua jenjang)
+      if (Number(nominals.nominal_lainnya) > 0) {
+         allEntries.push({ ...baseData, kategori: 'lainnya', jumlah_bayar: Number(nominals.nominal_lainnya) })
+      }
     }
 
     if (allEntries.length === 0) {
-      Swal.fire("Perhatian", "Isi nominal pembayaran terlebih dahulu.", "warning")
+      Swal.fire("Perhatian", "Isi minimal satu nominal pembayaran (termasuk nominal lainnya) terlebih dahulu.", "warning")
       setIsSubmitting(false)
       return
     }
@@ -93,7 +122,8 @@ export default function PaymentModal({ isOpen, onClose, santriList, onSuccessSav
       Swal.fire({ icon: 'success', title: `${allEntries.length} transaksi berhasil disimpan`, timer: 1500, showConfirmButton: false })
       onSuccessSave()
       loadSantriHistory(selectedSantri.id)
-      setNominals({ nominal_dapur: "", nominal_pesantren: "", nominal_sekolah: "", nominal_total: "" })
+      // Reset form
+      setNominals({ nominal_dapur: "", nominal_pesantren: "", nominal_sekolah: "", nominal_total: "", nominal_lainnya: "" })
       setKeterangan("")
     } catch (err: any) {
       Swal.fire("Gagal", err.message, "error")
@@ -103,6 +133,12 @@ export default function PaymentModal({ isOpen, onClose, santriList, onSuccessSav
   }
 
   if (!isOpen) return null
+
+  // Kondisi untuk menentukan apakah bulan harus dinonaktifkan
+  const isBulanDisabled = (bulanNumber: number) => {
+    // Jika ada bulan yang dipilih, dan bulan ini BUKAN bulan yang dipilih, maka disable.
+    return selectedBulanList.length === 1 && selectedBulanList[0] !== bulanNumber;
+  }
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
@@ -121,7 +157,6 @@ export default function PaymentModal({ isOpen, onClose, santriList, onSuccessSav
         </div>
 
         {/* Content Form */}
-        {/* PERBAIKAN: Ditambahkan `min-h-[380px]` agar dropdown pencarian autocomplete memiliki ruang gantung bebas dan tidak terpotong */}
         <div className={cn("overflow-y-auto flex-1 p-6", !selectedSantri && "min-h-[380px]")}>
           <form onSubmit={handleSimpanBayar} className="space-y-5">
             <div className="space-y-1.5 relative">
@@ -170,51 +205,86 @@ export default function PaymentModal({ isOpen, onClose, santriList, onSuccessSav
                   </div>
                   <div>
                     <div className="flex items-center justify-between mb-2">
-                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Bulan ({selectedBulanList.length} dipilih)</label>
-                      <button type="button" onClick={toggleAllBulan} className="text-[10px] font-bold text-sky-700 underline">
-                        {selectedBulanList.length === 12 ? "Batalkan Semua" : "Pilih Semua"}
-                      </button>
+                       <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider">
+                         Pilih Bulan {selectedBulanList.length === 0 && <span className="text-red-500">(Wajib pilih)</span>}
+                       </label>
+                       {/* Tombol pilih semua dihapus sesuai instruksi */}
                     </div>
                     <div className="grid grid-cols-4 gap-1.5">
-                      {BULAN_NAMES.map((b, i) => (
-                        <button key={i} type="button" onClick={() => toggleBulan(i + 1)} className={cn("py-1.5 rounded-lg text-[10px] font-bold border", selectedBulanList.includes(i + 1) ? "bg-sky-700 text-white" : "bg-white text-slate-500")}>
-                          {b.slice(0, 3)}
-                        </button>
-                      ))}
+                      {BULAN_NAMES.map((b, i) => {
+                        const bulanNumber = i + 1;
+                        const isSelected = selectedBulanList.includes(bulanNumber);
+                        const isDisabled = isBulanDisabled(bulanNumber);
+
+                        return (
+                          <button 
+                            key={i} 
+                            type="button" 
+                            onClick={() => toggleBulan(bulanNumber)} 
+                            disabled={isDisabled && !isSelected} // Mencegah klik pada bulan yang ter-disable
+                            className={cn(
+                              "py-1.5 rounded-lg text-[10px] font-bold border transition-colors", 
+                              isSelected 
+                                ? "bg-sky-700 text-white border-sky-800 shadow-inner" 
+                                : isDisabled 
+                                  ? "bg-slate-100 text-slate-300 border-slate-100 cursor-not-allowed opacity-50"
+                                  : "bg-white text-slate-500 hover:bg-sky-50"
+                            )}
+                          >
+                            {b.slice(0, 3)}
+                          </button>
+                        )
+                      })}
                     </div>
+                     <p className="text-[8px] text-slate-400 mt-2 italic text-center">
+                        *Klik bulan yang terpilih untuk membatalkan (memilih bulan lain).
+                     </p>
                   </div>
                 </div>
 
-                {/* Bagian Input Nominal Dinamis Berdasarkan Jenjang */}
+                {/* Bagian Input Nominal Dinamis */}
                 <div className="space-y-3">
                   {["MTS SAJA", "MA SAJA", "SANTRI NON MUKIM"].includes(selectedSantri.jenjang) ? (
-                    <div>
-                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Nominal Total</label>
-                      <input type="number" value={nominals.nominal_total} onChange={e => setNominals({ ...nominals, nominal_total: e.target.value })} className="w-full px-4 py-2.5 border rounded-xl text-xs" placeholder="Masukkan nominal..." />
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Nominal Total (Iuran)</label>
+                        <input type="number" value={nominals.nominal_total} onChange={e => setNominals({ ...nominals, nominal_total: e.target.value })} className="w-full px-4 py-2.5 border rounded-xl text-xs focus:border-sky-500 outline-none" placeholder="Masukkan nominal..." />
+                      </div>
+                      <div>
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider text-amber-600">Nominal Lainnya</label>
+                        <input type="number" value={nominals.nominal_lainnya} onChange={e => setNominals({ ...nominals, nominal_lainnya: e.target.value })} className="w-full px-4 py-2.5 border border-amber-200 bg-amber-50 rounded-xl text-xs focus:border-amber-500 outline-none" placeholder="Di luar iuran rutin..." />
+                      </div>
                     </div>
                   ) : (
-                    <div className="grid grid-cols-3 gap-3">
-                      <div>
-                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Nominal Dapur</label>
-                        <input type="number" value={nominals.nominal_dapur} onChange={e => setNominals({ ...nominals, nominal_dapur: e.target.value })} className="w-full px-3 py-2 border rounded-xl text-xs" placeholder="Rp" />
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-3 gap-3">
+                        <div>
+                          <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Dapur</label>
+                          <input type="number" value={nominals.nominal_dapur} onChange={e => setNominals({ ...nominals, nominal_dapur: e.target.value })} className="w-full px-3 py-2 border rounded-xl text-xs focus:border-sky-500 outline-none" placeholder="Rp" />
+                        </div>
+                        <div>
+                          <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Pesantren</label>
+                          <input type="number" value={nominals.nominal_pesantren} onChange={e => setNominals({ ...nominals, nominal_pesantren: e.target.value })} className="w-full px-3 py-2 border rounded-xl text-xs focus:border-sky-500 outline-none" placeholder="Rp" />
+                        </div>
+                        <div>
+                          <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Sekolah</label>
+                          <input type="number" value={nominals.nominal_sekolah} onChange={e => setNominals({ ...nominals, nominal_sekolah: e.target.value })} className="w-full px-3 py-2 border rounded-xl text-xs focus:border-sky-500 outline-none" placeholder="Rp" />
+                        </div>
                       </div>
-                      <div>
-                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Nominal Pesantren</label>
-                        <input type="number" value={nominals.nominal_pesantren} onChange={e => setNominals({ ...nominals, nominal_pesantren: e.target.value })} className="w-full px-3 py-2 border rounded-xl text-xs" placeholder="Rp" />
-                      </div>
-                      <div>
-                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Nominal Sekolah</label>
-                        <input type="number" value={nominals.nominal_sekolah} onChange={e => setNominals({ ...nominals, nominal_sekolah: e.target.value })} className="w-full px-3 py-2 border rounded-xl text-xs" placeholder="Rp" />
+                      <div className="w-1/2">
+                         <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider text-amber-600">Nominal Lainnya</label>
+                         <input type="number" value={nominals.nominal_lainnya} onChange={e => setNominals({ ...nominals, nominal_lainnya: e.target.value })} className="w-full px-3 py-2 border border-amber-200 bg-amber-50 rounded-xl text-xs focus:border-amber-500 outline-none" placeholder="Di luar iuran (opsional)..." />
                       </div>
                     </div>
                   )}
+
                   <div>
                     <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Keterangan</label>
-                    <input type="text" value={keterangan} onChange={e => setKeterangan(e.target.value)} className="w-full px-4 py-2.5 border rounded-xl text-xs" placeholder="Catatan tambahan (opsional)..." />
+                    <input type="text" value={keterangan} onChange={e => setKeterangan(e.target.value)} className="w-full px-4 py-2.5 border rounded-xl text-xs focus:border-sky-500 outline-none" placeholder="Catatan tambahan (opsional, misal: Untuk seragam, buku, dll)..." />
                   </div>
                 </div>
 
-                <button type="submit" disabled={isSubmitting} className="w-full bg-sky-700 text-white font-black text-xs uppercase py-3 rounded-xl flex justify-center items-center gap-2">
+                <button type="submit" disabled={isSubmitting} className="w-full bg-sky-700 hover:bg-sky-800 text-white font-black text-xs uppercase py-3 rounded-xl flex justify-center items-center gap-2 transition-colors">
                   {isSubmitting ? <Loader2 className="animate-spin" size={16} /> : "Simpan Pembayaran"}
                 </button>
               </div>

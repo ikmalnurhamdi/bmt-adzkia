@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useCallback } from "react"
 import { getSupabase } from "@/lib/supabase"
 import { getTargetDinamis } from "../transaksi/utils/transactionHelpers"
 
-// Import komponen (sesuaikan path foldernya dengan struktur Anda)
+// Import komponen
 import Header from "@/components/rekap-transaksi-santri/Header"
 import SantriSearch from "@/components/rekap-transaksi-santri/SantriSearch"
 import SantriProfileCard from "@/components/rekap-transaksi-santri/SantriProfileCard"
@@ -44,7 +44,7 @@ export default function RekapTransaksiSantriPage() {
   const filteredSantriList = useMemo(() => {
     if (!searchTerm) return []
     return santriList.filter(s => 
-      s.nama_lengkap.toLowerCase().includes(searchTerm.toLowerCase()) || 
+      s.nama_lengkap?.toLowerCase().includes(searchTerm.toLowerCase()) || 
       (s.nis && s.nis.toString().includes(searchTerm))
     ).slice(0, 5) 
   }, [santriList, searchTerm])
@@ -118,22 +118,37 @@ export default function RekapTransaksiSantriPage() {
         filteredList={filteredSantriList} 
         onSelect={handleSelectSantri} 
       />
-
+      
+      {/* 
+        Area ini muncul hanya jika santri sudah dipilih.
+        Semua info profil, metrik tagihan, dan tabel transaksi dimasukkan ke sini.
+      */}
       {selectedSantri && (
         <div className="space-y-4 animate-in slide-in-from-bottom-4 duration-500">
+          
+          {/* Kartu Profil & Metrik Tunggakan/Lunas */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             <SantriProfileCard santri={selectedSantri} jumlahBulan={rekap?.jumlahBulan || 0} />
             <MetricCards rekap={rekap} />
           </div>
-          <TransactionTable transaksi={transaksiSantri} isLoading={isLoadingTransaksi} />
+          
+          {/* Tabel Transaksi yang sudah terintegrasi fitur Filter & Export */}
+          <TransactionTable 
+            transaksi={transaksiSantri} 
+            isLoading={isLoadingTransaksi} 
+            santriName={selectedSantri.nama_lengkap || selectedSantri.nama} // Nama untuk file PDF/Excel
+          />
+
         </div>
       )}
 
+      {/* Global Style untuk Scrollbar Tabel */}
       <style jsx global>{`
         .custom-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
       `}</style>
+      
     </div>
   )
 }

@@ -146,6 +146,7 @@ export default function TransaksiPage() {
                 <th className="px-4 py-3.5 text-center border-r border-slate-700">Dapur</th>
                 <th className="px-4 py-3.5 text-center border-r border-slate-700">Pesantren</th>
                 <th className="px-4 py-3.5 text-center border-r border-slate-700">Sekolah</th>
+                <th className="px-4 py-3.5 text-center border-r border-slate-700">Lainnya</th>
                 <th className="px-4 py-3.5 text-center border-r border-slate-700">Status</th>
                 <th className="px-4 py-3.5 text-center">Aksi</th>
               </tr>
@@ -153,50 +154,85 @@ export default function TransaksiPage() {
             <tbody className="divide-y divide-slate-50">
               {santriWithTransactions.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-16 text-slate-400">Belum ada transaksi pada periode ini.</td>
+                  <td colSpan={8} className="text-center py-16 text-slate-400">Belum ada transaksi pada periode ini.</td>
                 </tr>
               ) : santriWithTransactions.map(s => {
                 const targetD = getTargetDinamis(s, "dapur", masterTarif)
                 const targetP = getTargetDinamis(s, "pesantren", masterTarif)
                 const targetS = getTargetDinamis(s, "sekolah", masterTarif)
+                
                 const bayarD = pembayaranList.filter(p => p.santri_id === s.id && p.kategori === "dapur").reduce((a, b) => a + b.jumlah_bayar, 0)
                 const bayarP = pembayaranList.filter(p => p.santri_id === s.id && p.kategori === "pesantren").reduce((a, b) => a + b.jumlah_bayar, 0)
                 const bayarS = pembayaranList.filter(p => p.santri_id === s.id && p.kategori === "sekolah").reduce((a, b) => a + b.jumlah_bayar, 0)
+                
+                // Transaksi khusus lainnya
+                const trxLainnya = pembayaranList.filter(p => p.santri_id === s.id && p.kategori === "lainnya")
+                
+                // Status hanya memperhitungkan Dapur, Pesantren, dan Sekolah
                 const isFullyLunas = (bayarD >= targetD) && (bayarP >= targetP) && (bayarS >= targetS)
 
                 return (
                   <tr key={s.id} className={cn("hover:bg-slate-50/70 text-sm", isFullyLunas && "bg-emerald-50/30")}>
-                    <td className="px-5 py-3 border-r border-slate-50">
+                    <td className="px-5 py-3 border-r border-slate-50 align-top">
                       <div className="font-bold text-xs uppercase text-slate-800">{s.nama_lengkap}</div>
                       <div className="text-[10px] text-sky-600 font-semibold mt-0.5">NIS: {s.nis || "—"}</div>
                     </td>
-                    <td className="px-4 py-3 border-r text-center">
+                    <td className="px-4 py-3 border-r text-center align-top">
                       <span className="text-[9px] font-bold text-sky-700 bg-sky-50 border border-sky-200 px-2 py-1 rounded-full">{s.jenjang}</span>
                     </td>
-                    <td className="px-4 py-3 border-r text-center">
+                    <td className="px-4 py-3 border-r text-center align-top">
                       <PaymentCell santri={s} jenis="dapur" pembayaranList={pembayaranList} masterTarif={masterTarif} onDeleteSingleTrx={handleDeleteSingleTrx} />
                     </td>
-                    <td className="px-4 py-3 border-r text-center">
+                    <td className="px-4 py-3 border-r text-center align-top">
                       <PaymentCell santri={s} jenis="pesantren" pembayaranList={pembayaranList} masterTarif={masterTarif} onDeleteSingleTrx={handleDeleteSingleTrx} />
                     </td>
-                    <td className="px-4 py-3 border-r text-center">
+                    <td className="px-4 py-3 border-r text-center align-top">
                       <PaymentCell santri={s} jenis="sekolah" pembayaranList={pembayaranList} masterTarif={masterTarif} onDeleteSingleTrx={handleDeleteSingleTrx} />
                     </td>
-                    <td className="px-4 py-3 border-r text-center">
+                    
+                    {/* KOLOM LAINNYA */}
+                    <td className="px-4 py-3 border-r text-center align-top">
+                      {trxLainnya.length > 0 ? (
+                        <div className="flex flex-col gap-1.5 items-center">
+                          {trxLainnya.map(trx => (
+                            <div key={trx.id} className="group relative flex flex-col items-center bg-white border border-slate-200 px-2 py-1 rounded-md w-full min-w-[70px]">
+                              <span className="text-[10px] font-bold text-slate-700">
+                                Rp {trx.jumlah_bayar.toLocaleString('id-ID')}
+                              </span>
+                              {trx.keterangan && (
+                                <span className="text-[9px] text-slate-500 lowercase text-center leading-tight mt-0.5">
+                                  {trx.keterangan}
+                                </span>
+                              )}
+                              <button 
+                                onClick={() => handleDeleteSingleTrx(trx.id)}
+                                className="absolute -right-1 -top-1 opacity-0 group-hover:opacity-100 bg-red-100 text-red-600 p-1 rounded-full shadow-sm transition-opacity"
+                              >
+                                <Trash2 size={10} />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-slate-300 text-[10px]">-</span>
+                      )}
+                    </td>
+
+                    <td className="px-4 py-3 border-r text-center align-top">
                       {isFullyLunas ? (
-                        <div className="flex flex-col items-center gap-1">
+                        <div className="flex flex-col items-center gap-1 mt-1">
                           <CheckCircle2 size={16} className="text-emerald-500" />
                           <span className="text-[9px] font-bold text-emerald-600 uppercase">Lunas</span>
                         </div>
                       ) : (
-                        <div className="flex flex-col items-center gap-1">
+                        <div className="flex flex-col items-center gap-1 mt-1">
                           <AlertCircle size={16} className="text-orange-400" />
                           <span className="text-[9px] font-bold text-orange-500 uppercase">Kurang</span>
                         </div>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-center">
-                      <div className="flex items-center justify-center gap-1">
+                    <td className="px-4 py-3 text-center align-top">
+                      <div className="flex items-center justify-center gap-1 mt-0.5">
                         <button onClick={() => handleCetakKwitansi(s)} disabled={printingId === s.id} className="p-1.5 text-sky-600 hover:bg-sky-50 rounded-lg">
                           {printingId === s.id ? <Loader2 size={15} className="animate-spin" /> : <FileText size={15} />}
                         </button>
