@@ -9,7 +9,7 @@ import { getSupabase } from "@/lib/supabase"
 import { cn } from "@/lib/utils"
 
 const BULAN_NAMES = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"]
-const DAFTAR_DAPUR = ["Dapur Umi", "Dapur Qais", "Dapur Hamka"]
+const DAFTAR_DAPUR = ["Dapur Umi", "Dapur Qais", "Dapur Hamka", "Dapur Haidar", "Dapur Rengganis"]
 
 export default function DashboardDPU() {
   const [selectedDapur, setSelectedDapur] = useState(DAFTAR_DAPUR[0])

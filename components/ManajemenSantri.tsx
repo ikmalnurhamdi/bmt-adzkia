@@ -11,7 +11,7 @@ import { getSupabase } from "@/lib/supabase"
 import Swal from "sweetalert2"
 import { cn } from "@/lib/utils"
 
-const DAFTAR_DAPUR = ["Dapur Umi", "Dapur Qais", "Dapur Hamka"]
+const DAFTAR_DAPUR = ["Dapur Umi", "Dapur Qais", "Dapur Hamka", "Dapur Haidar", "Dapur Rengganis"]
 const KATEGORI_NON_MUKIM = ["MTS SAJA", "MA SAJA", "SANTRI NON MUKIM", "PENGABDIAN"]
 
 export default function ManajemenSantri({ onUpdate }: { onUpdate: () => void }) {
