@@ -1,265 +1,306 @@
 "use client"
 
-import { useState, useEffect, useCallback, useMemo } from "react"
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
-import { 
-  Users, Wallet, Banknote, ReceiptText, 
-  Activity 
+import { useCallback, useEffect, useState } from "react"
+import Link from "next/link"
+import {
+  Activity, ArrowUpRight, Banknote, CheckCircle2, ChevronRight,
+  Clock, Plus, Receipt, RotateCw, Users, Wallet
 } from "lucide-react"
 import { getSupabase } from "@/lib/supabase"
+import { useMaster } from "@/lib/master"
+import { fail } from "@/lib/alert"
+import { BULAN_NAMES } from "@/lib/constants"
+import { rupiah } from "@/lib/format"
 import { cn } from "@/lib/utils"
-
-
-// Import sub-komponen
-import ManajemenSantri from "@/components/ManajemenSantri"
-import LaporanKeuangan from "@/app/laporan-keuangan/page"
+import type { Ringkasan } from "@/lib/types"
+import { Empty, PageHeader, Spinner, StatCard, TahunSelect, ui } from "@/components/ui"
 
 export default function DashboardPage() {
-  const [mounted, setMounted] = useState(false)
-  const [activeTab, setActiveTab] = useState("overview")
-  const [stats, setStats] = useState({
-    totalSantri: 0,
-    totalPemasukan: 0,
-    totalPengeluaran: 0,
-    totalTunggakan: 0,
-  })
+  const { tahunAjaran, tahunDefault, ready } = useMaster()
+  const [tahunPilih, setTahunPilih] = useState<number | null>(null)
+  const tahun = tahunPilih ?? tahunDefault
+
+  const [ringkasan, setRingkasan] = useState<Ringkasan | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  const muat = useCallback(async () => {
+    setLoading(true)
+    const { data, error } = await getSupabase().rpc("fn_ringkasan", { p_tahun: tahun })
+    setLoading(false)
+    if (error) return fail(error)
+    setRingkasan(data as Ringkasan)
+  }, [tahun])
 
   useEffect(() => {
-    setMounted(true)
-  }, [])
+    if (ready) muat()
+  }, [ready, muat])
 
-  const loadStats = useCallback(async () => {
-    const supabase = getSupabase()
-    const skrg = new Date()
-    const blnSkrg = skrg.getMonth() + 1
-    const thnSkrg = skrg.getFullYear()
+  const totalPotensi = (ringkasan?.pemasukan ?? 0) + (ringkasan?.tunggakan ?? 0)
+  const efektivitas = totalPotensi > 0
+    ? Math.min(100, Math.round(((ringkasan?.pemasukan ?? 0) / totalPotensi) * 100))
+    : 0
 
-    const [santriRes, pembayaranRes, masterTarifRes, operasionalRes] = await Promise.all([
-      supabase.from("santri").select("*").eq("status_aktif", true),
-      supabase.from("transaksi_pembayaran_v2").select("*"),
-      supabase.from("tarif").select("*").eq("angkatan", 2026), 
-      supabase.from("keuangan_operasional").select("*")
-    ])
+  const maxBulanan = Math.max(1, ...(ringkasan?.per_bulan?.map((b) => b.total) ?? [1]))
+  const saldoKas = (ringkasan?.kas_masuk ?? 0) - (ringkasan?.kas_keluar ?? 0)
 
-    const santriData = santriRes.data || []
-    const masterTarif = masterTarifRes.data || []
-    const pembayaranList = pembayaranRes.data || []
-    const operasionalList = operasionalRes.data || []
-
-    const payMap = new Map()
-    pembayaranList.forEach((p: any) => {
-      const key = `${p.santri_id}-${p.bulan}-${p.tahun}-${p.kategori}`
-      payMap.set(key, (payMap.get(key) || 0) + p.jumlah_bayar)
-    })
-    
-    const tarifMap = new Map()
-    masterTarif.forEach((t: any) => {
-      tarifMap.set(t.komponen, t.nominal)
-    })
-
-    let totalAkumulasiTunggakan = 0
-
-    santriData.forEach((s: any) => {
-      const tglRef = s.tanggal_mulai_tagihan ? new Date(s.tanggal_mulai_tagihan) : new Date(s.tanggal_masuk)
-      const thnStart = tglRef.getFullYear()
-      const blnStart = tglRef.getMonth() + 1
-      const k = s.jenjang 
-
-      for (let th = thnStart; th <= thnSkrg; th++) {
-        const blnEnd = (th === thnSkrg) ? blnSkrg : 12
-        const blnStartLoop = (th === thnStart) ? blnStart : 1
-
-        for (let bl = blnStartLoop; bl <= blnEnd; bl++) {
-          let tD = 0, tP = 0, tS = 0
-
-          if (k === "MTS PLUS") {
-            tD = tarifMap.get("dapur_mts") || 0
-            tP = tarifMap.get("pesantren_mts") || 0
-            tS = tarifMap.get("sekolah_mts") || 0
-          } else if (k === "MTS PLUS REVISI") {
-            tD = tarifMap.get("dapur_mts_revisi") || 0
-            tP = tarifMap.get("pesantren_mts_revisi") || 0
-            tS = tarifMap.get("sekolah_mts_revisi") || 0
-          } else if (k === "MA PLUS") {
-            tD = tarifMap.get("dapur_ma") || 0
-            tP = tarifMap.get("pesantren_ma") || 0
-            tS = tarifMap.get("sekolah_ma") || 0
-          } else if (k === "MA PLUS REVISI") {
-            tD = tarifMap.get("dapur_ma_revisi") || 0
-            tP = tarifMap.get("pesantren_ma_revisi") || 0
-            tS = tarifMap.get("sekolah_ma_revisi") || 0
-          } else if (k === "TAKHOSUS/KULIAH") {
-            tD = tarifMap.get("dapur_takhosus") || 0
-            tP = tarifMap.get("pesantren_takhosus") || 0
-          } else if (k === "PENGABDIAN") {
-            tP = tarifMap.get("pesantren_pengabdian") || 0
-          } else if (k === "MTS SAJA" || k === "MA SAJA") {
-            tS = tarifMap.get(k) || 0 
-          } else if (k === "SANTRI NON MUKIM") {
-            tP = tarifMap.get(k) || 0 
-          }
-
-          const bD = payMap.get(`${s.id}-${bl}-${th}-dapur`) || 0
-          const bP = payMap.get(`${s.id}-${bl}-${th}-pesantren`) || 0
-          const bS = payMap.get(`${s.id}-${bl}-${th}-sekolah`) || 0
-
-          totalAkumulasiTunggakan += (Math.max(0, tD - bD) + Math.max(0, tP - bP) + Math.max(0, tS - bS))
+  return (
+    <div className="p-4 lg:p-6 space-y-5 fade-up max-w-7xl mx-auto">
+      <PageHeader
+        icon={<Activity size={22} className="text-sky-600" />}
+        title="Dashboard"
+        subtitle={`Ringkasan Keuangan & Administrasi · Tahun ${tahun}`}
+        actions={
+          <div className="flex items-center gap-2">
+            <TahunSelect value={tahun} onChange={setTahunPilih} tahunAjaran={tahunAjaran} />
+            <button
+              onClick={muat}
+              disabled={loading}
+              className={ui.btnGhost}
+              title="Refresh data"
+            >
+              <RotateCw size={14} className={cn(loading && "animate-spin")} />
+              <span className="hidden sm:inline">Refresh</span>
+            </button>
+          </div>
         }
-      }
-    })
+      />
 
-    const totalMasukSyahriah = pembayaranList.reduce((a: any, b: any) => a + b.jumlah_bayar, 0)
-    const totalMasukOps = operasionalList.filter((o: any) => o.jenis === 'pemasukan').reduce((a: any, b: any) => a + b.nominal, 0)
-    const totalKeluarOps = operasionalList.filter((o: any) => o.jenis === 'pengeluaran').reduce((a: any, b: any) => a + b.nominal, 0)
-    const saldoOperasional = totalMasukOps - totalKeluarOps
+      {/* STAT CARDS */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard
+          title="Siswa Aktif"
+          value={`${ringkasan?.siswa_aktif ?? 0} Anak`}
+          sub={ringkasan?.calon ? `${ringkasan.calon} Calon PPDB` : "Terdaftar Aktif"}
+          icon={<Users size={22} />}
+          tone="sky"
+        />
+        <StatCard
+          title="Pembayaran Masuk"
+          value={rupiah(ringkasan?.pemasukan ?? 0)}
+          sub={`Tahun Ajaran ${tahun}`}
+          icon={<Banknote size={22} />}
+          tone="emerald"
+        />
+        <StatCard
+          title="Tunggakan Jatuh Tempo"
+          value={rupiah(ringkasan?.tunggakan ?? 0)}
+          sub="Belum Terbayar"
+          icon={<Wallet size={22} />}
+          tone={ringkasan?.tunggakan ? "red" : "emerald"}
+        />
+        <StatCard
+          title="Saldo Kas Operasional"
+          value={rupiah(saldoKas)}
+          sub={`Masuk ${rupiah(ringkasan?.kas_masuk ?? 0)} · Keluar ${rupiah(ringkasan?.kas_keluar ?? 0)}`}
+          icon={<Receipt size={22} />}
+          tone="orange"
+        />
+      </div>
 
-    setStats({  
-      totalSantri: santriData.length,
-      totalPemasukan: totalMasukSyahriah, 
-      totalPengeluaran: saldoOperasional, 
-      totalTunggakan: totalAkumulasiTunggakan
-    })
-  }, [])
+      {/* GRAFIK & EFEKTIVITAS */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        {/* Progress Efektivitas */}
+        <div className={cn(ui.card, "p-5 sm:p-6 space-y-5 flex flex-col justify-between")}>
+          <div>
+            <div className="flex items-center justify-between">
+              <h2 className="font-black text-slate-800 uppercase text-xs tracking-wider">
+                Efektivitas Penagihan
+              </h2>
+              <span className="text-2xl font-black text-sky-600">{efektivitas}%</span>
+            </div>
+            <p className="text-[10px] text-slate-400 mt-1">
+              Perbandingan dana diterima terhadap total kewajiban jatuh tempo tahun {tahun}.
+            </p>
 
-  useEffect(() => {
-    if (mounted) loadStats()
-  }, [mounted, loadStats])
+            <div className="w-full bg-slate-100 h-3.5 rounded-full overflow-hidden shadow-inner mt-4">
+              <div
+                className="bg-gradient-to-r from-sky-500 to-emerald-500 h-full transition-all duration-700 rounded-full"
+                style={{ width: `${efektivitas}%` }}
+              />
+            </div>
+          </div>
 
-  const efektivitas = useMemo(() => {
-    const totalPotensi = stats.totalPemasukan + stats.totalTunggakan
-    return totalPotensi > 0 ? Math.round((stats.totalPemasukan / totalPotensi) * 100) : 0
-  }, [stats])
-
-  if (!mounted) return null
-
-  return (
-    <div className="p-4 lg:p-8 space-y-8 animate-in fade-in duration-500 font-sans text-black">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tighter leading-none">Dashboard</h2>
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-2 flex items-center gap-2">
-            <Activity size={12} className="text-sky-500" /> Akumulasi Data Keseluruhan
-          </p>
+          <div className="grid grid-cols-2 gap-3 pt-2">
+            <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-100 text-center">
+              <p className="text-[9px] font-black text-emerald-600 uppercase">Diterima</p>
+              <p className="text-xs sm:text-sm font-black text-emerald-900 mt-0.5">
+                {rupiah(ringkasan?.pemasukan ?? 0)}
+              </p>
+            </div>
+            <div className="p-3 bg-red-50 rounded-xl border border-red-100 text-center">
+              <p className="text-[9px] font-black text-red-600 uppercase">Tunggakan</p>
+              <p className="text-xs sm:text-sm font-black text-red-900 mt-0.5">
+                {rupiah(ringkasan?.tunggakan ?? 0)}
+              </p>
+            </div>
+          </div>
         </div>
-        <button 
-          onClick={() => loadStats()} 
-          className="bg-sky-900 text-white px-5 py-2 rounded-xl text-[10px] font-black uppercase hover:bg-black transition-all active:scale-95 shadow-lg"
-        >
-          Refresh Data
-        </button>
-      </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard title="Santri Aktif" value={stats.totalSantri} sub="Total Jiwa" icon={<Users size={20}/>} color="sky" />
-        <StatCard 
-  title="Total Saldo Syahriah" 
-  value={`Rp ${stats.totalPemasukan.toLocaleString()}`} 
-  sub="Uang Masuk" 
-  icon={<Banknote size={20}/>} 
-  color="emerald" 
-/>
-        <StatCard 
-  title="Operasional" 
-  value={`Rp ${stats.totalPengeluaran.toLocaleString()}`} 
-  sub="Saldo Laporan" 
-  icon={<ReceiptText size={20}/>} 
-  color="orange" 
-/>
-        <StatCard title="Total Tunggakan" value={`Rp ${stats.totalTunggakan.toLocaleString()}`} sub="Tunggakan Santri" icon={<Wallet size={20}/>} color="red" />
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 bg-white p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6">
+        {/* Tren Pembayaran Bulanan (CSS Bar Chart murni - sangat ringan) */}
+        <div className={cn(ui.card, "p-5 sm:p-6 lg:col-span-2 space-y-4")}>
           <div className="flex items-center justify-between">
-            <h3 className="font-black text-slate-800 uppercase text-xs tracking-wider">Efektivitas Penagihan Syahriah</h3>
-            <span className="text-2xl font-black text-sky-600">{efektivitas}%</span>
-          </div>
-          <div className="w-full bg-slate-100 h-4 rounded-full overflow-hidden shadow-inner">
-            <div 
-              className="bg-gradient-to-r from-sky-400 to-sky-600 h-full transition-all duration-1000" 
-              style={{ width: `${efektivitas}%` }}
-            ></div>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100 text-center">
-              <p className="text-[9px] font-black text-emerald-600 uppercase mb-1">Dana Tertagih</p>
-              <p className="text-sm font-black text-emerald-900">Rp {stats.totalPemasukan.toLocaleString()}</p>
+            <div>
+              <h2 className="font-black text-slate-800 uppercase text-xs tracking-wider">
+                Tren Pembayaran Bulanan ({tahun})
+              </h2>
+              <p className="text-[10px] text-slate-400 mt-0.5">Akumulasi uang masuk per bulan transaksi</p>
             </div>
-            <div className="p-4 bg-red-50 rounded-2xl border border-red-100 text-center">
-              <p className="text-[9px] font-black text-red-600 uppercase mb-1">Belum Tertagih</p>
-              <p className="text-sm font-black text-red-900">Rp {stats.totalTunggakan.toLocaleString()}</p>
-            </div>
+            <Link
+              href="/transaksi"
+              className="text-[10px] font-black uppercase text-sky-700 hover:text-sky-900 flex items-center gap-1"
+            >
+              Lihat Transaksi <ArrowUpRight size={14} />
+            </Link>
           </div>
-        </div>
 
-        <div className="bg-white rounded-3xl p-8 border border-slate-200 shadow-sm flex flex-col items-center">
-          <h3 className="font-black text-slate-800 uppercase text-[10px] tracking-widest mb-4 self-start">Rasio Pembayaran</h3>
-          <div className="w-full h-[200px] relative">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={[
-                    { name: 'Lunas', value: stats.totalPemasukan },
-                    { name: 'Menunggak', value: stats.totalTunggakan }
-                  ]}
-                  cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={8} dataKey="value" stroke="none"
-                >
-                  <Cell fill="#10b981" />
-                  <Cell fill="#ef4444" />
-                </Pie>
-                <Tooltip contentStyle={{ borderRadius: '12px', fontSize: '10px', fontWeight: '900' }} />
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-              <span className="text-2xl font-black text-slate-900">{efektivitas}%</span>
-            </div>
+          <div className="h-44 flex items-end gap-1.5 sm:gap-3 pt-6 pb-1 px-1 border-b border-slate-100">
+            {BULAN_NAMES.map((b, i) => {
+              const bulanIdx = i + 1
+              const item = ringkasan?.per_bulan?.find((x) => x.bulan === bulanIdx)
+              const totalBln = item?.total ?? 0
+              const tinggiPersen = Math.max(4, Math.round((totalBln / maxBulanan) * 100))
+
+              return (
+                <div key={b} className="flex-1 flex flex-col items-center gap-1.5 h-full justify-end group relative">
+                  {/* Tooltip hover */}
+                  <div className="absolute -top-7 opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity bg-slate-900 text-white text-[9px] font-bold px-2 py-1 rounded shadow-lg whitespace-nowrap z-20">
+                    {b}: {rupiah(totalBln)}
+                  </div>
+                  <div
+                    className={cn(
+                      "w-full rounded-t-lg transition-all duration-300",
+                      totalBln > 0
+                        ? "bg-sky-600 hover:bg-sky-500 shadow-sm"
+                        : "bg-slate-100"
+                    )}
+                    style={{ height: `${tinggiPersen}%` }}
+                  />
+                  <span className="text-[9px] font-bold text-slate-400 group-hover:text-slate-800 transition-colors">
+                    {b.slice(0, 3)}
+                  </span>
+                </div>
+              )
+            })}
           </div>
         </div>
       </div>
 
-      <div className="mt-12 space-y-6">
-        <div className="flex gap-4 border-b border-slate-200 overflow-x-auto custom-scrollbar">
-           {["overview", "santri", "keuangan"].map((tab) => (
-             <button 
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={cn(
-                "px-6 py-3 text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap",
-                activeTab === tab ? "text-sky-600 border-b-4 border-sky-600" : "text-slate-400 hover:text-slate-600"
-              )}
-             >
-               {tab === "overview" ? "Ringkasan" : tab === "santri" ? "Data Santri" : "Laporan Unit"}
-             </button>
-           ))}
+      {/* DETAIL PER KATEGORI PEMBAYARAN */}
+      <div className={cn(ui.card, "overflow-hidden")}>
+        <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between">
+          <div>
+            <h2 className="text-xs font-black uppercase tracking-widest text-slate-800">
+              Rekapitulasi per Kategori Pembayaran
+            </h2>
+            <p className="text-[10px] text-slate-400 mt-0.5">
+              Rincian kewajiban, penerimaan, dan tunggakan untuk masing-masing pos pembayaran dinamis
+            </p>
+          </div>
+          <Link
+            href="/pengaturan"
+            className="text-[10px] font-black uppercase text-sky-700 hover:text-sky-900 flex items-center gap-1"
+          >
+            Atur Tarif <ChevronRight size={14} />
+          </Link>
         </div>
-        
-        <div className="animate-in slide-in-from-bottom-4 duration-500">
-          {/* PERBAIKAN: ManajemenSantri (tadi ManajemenSant) */}
-          {activeTab === "santri" && <ManajemenSantri onUpdate={loadStats} />}
-          {activeTab === "keuangan" && <LaporanKeuangan onUpdate={loadStats} />}
-        </div>
-      </div>
-    </div>
-  )
-}
 
-function StatCard({ title, value, sub, icon, color }: any) {
-  const themes: any = {
-    sky: "bg-sky-50 text-sky-600 border-sky-100",
-    emerald: "bg-emerald-50 text-emerald-600 border-emerald-100",
-    orange: "bg-orange-50 text-orange-600 border-orange-100",
-    red: "bg-red-50 text-red-600 border-red-100",
-  }
-  return (
-    <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm group hover:border-sky-500 transition-all">
-      <div className="flex items-center justify-between mb-4">
-        <div className={cn("p-3 rounded-2xl border", themes[color])}>{icon}</div>
-        <div className="h-1.5 w-1.5 rounded-full bg-slate-200 group-hover:bg-sky-500"></div>
+        {loading && !ringkasan ? (
+          <Spinner label="Memuat ringkasan..." />
+        ) : !ringkasan?.kategori?.length ? (
+          <Empty text="Belum ada data kategori pembayaran" />
+        ) : (
+          <div className="overflow-x-auto custom-scrollbar">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-800 text-white">
+                <tr>
+                  <th className={ui.th}>Kategori Pembayaran</th>
+                  <th className={`${ui.th} text-right`}>Target Jatuh Tempo</th>
+                  <th className={`${ui.th} text-right`}>Penerimaan</th>
+                  <th className={`${ui.th} text-right`}>Sisa Tunggakan</th>
+                  <th className={`${ui.th} text-center`}>Status Capaian</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {ringkasan.kategori.map((k) => {
+                  const persen = k.tagihan > 0 ? Math.min(100, Math.round((k.bayar / k.tagihan) * 100)) : 100
+                  const isLunas = k.tunggakan <= 0
+                  return (
+                    <tr key={k.id} className="hover:bg-slate-50/70">
+                      <td className="px-4 py-3.5">
+                        <span className="font-black text-slate-800 uppercase">{k.nama}</span>
+                      </td>
+                      <td className="px-4 py-3.5 text-right font-bold text-slate-600">
+                        {rupiah(k.tagihan)}
+                      </td>
+                      <td className="px-4 py-3.5 text-right font-black text-emerald-700">
+                        {rupiah(k.bayar)}
+                      </td>
+                      <td className="px-4 py-3.5 text-right font-black text-red-600">
+                        {rupiah(k.tunggakan)}
+                      </td>
+                      <td className="px-4 py-3.5 text-center">
+                        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase border"
+                          style={{
+                            backgroundColor: isLunas ? "#ecfdf5" : "#fff7ed",
+                            borderColor: isLunas ? "#a7f3d0" : "#fed7aa",
+                            color: isLunas ? "#047857" : "#c2410c",
+                          }}
+                        >
+                          {isLunas ? <CheckCircle2 size={12} /> : <Clock size={12} />}
+                          <span>{persen}%</span>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
-      <div>
-        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{title}</p>
-        <h3 className="text-lg font-black text-slate-900 mt-1">{value}</h3>
-        <p className="text-[8px] font-bold text-slate-300 uppercase mt-1">{sub}</p>
+
+      {/* PINTASAN CEPAT */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
+        <Link
+          href="/transaksi"
+          className="flex items-center justify-between p-3.5 bg-white border border-slate-200 rounded-xl hover:border-sky-500 hover:shadow-sm transition group"
+        >
+          <div>
+            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Input Bayar</p>
+            <p className="text-xs font-black text-slate-800 mt-0.5 group-hover:text-sky-700">Transaksi Siswa</p>
+          </div>
+          <Plus size={16} className="text-sky-600" />
+        </Link>
+        <Link
+          href="/siswa"
+          className="flex items-center justify-between p-3.5 bg-white border border-slate-200 rounded-xl hover:border-sky-500 hover:shadow-sm transition group"
+        >
+          <div>
+            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Registrasi</p>
+            <p className="text-xs font-black text-slate-800 mt-0.5 group-hover:text-sky-700">Data Siswa / PPDB</p>
+          </div>
+          <Users size={16} className="text-sky-600" />
+        </Link>
+        <Link
+          href="/tunggakan"
+          className="flex items-center justify-between p-3.5 bg-white border border-slate-200 rounded-xl hover:border-sky-500 hover:shadow-sm transition group"
+        >
+          <div>
+            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Monitoring</p>
+            <p className="text-xs font-black text-slate-800 mt-0.5 group-hover:text-red-700">Daftar Tunggakan</p>
+          </div>
+          <Wallet size={16} className="text-red-500" />
+        </Link>
+        <Link
+          href="/laporan-keuangan"
+          className="flex items-center justify-between p-3.5 bg-white border border-slate-200 rounded-xl hover:border-sky-500 hover:shadow-sm transition group"
+        >
+          <div>
+            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Buku Kas</p>
+            <p className="text-xs font-black text-slate-800 mt-0.5 group-hover:text-sky-700">Laporan Kas</p>
+          </div>
+          <Receipt size={16} className="text-orange-500" />
+        </Link>
       </div>
     </div>
   )

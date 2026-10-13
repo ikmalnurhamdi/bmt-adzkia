@@ -1,22 +1,17 @@
 {
-  "name": "BMT ADZKIA - Sistem Keuangan",
-  "short_name": "BMT Adzkia",
-  "description": "Sistem Keuangan Pesantren Terpadu",
+  "name": "MTs ADZKIA MOBILE - Rekap Keuangan",
+  "short_name": "MTs Adzkia",
+  "description": "Aplikasi Rekap Keuangan MTs Adzkia",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
-  "theme_color": "#0284c7",
+  "theme_color": "#0369a1",
   "icons": [
     {
       "src": "/logo.png",
-      "sizes": "192x192",
+      "sizes": "256x256",
       "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/logo.png",
-      "sizes": "512x512",
-      "type": "image/png"
+      "purpose": "any"
     }
   ]
 }

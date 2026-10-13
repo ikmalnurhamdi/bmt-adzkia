@@ -1,14 +1,13 @@
-import type { NextConfig } from "next";
+import type { NextConfig } from "next"
 
 const nextConfig: NextConfig = {
-  /* config options here */
-  typescript: {
-    ignoreBuildErrors: true,
+  reactStrictMode: true,
+  poweredByHeader: false,
+  compress: true,
+  experimental: {
+    // Impor ikon lucide per-ikon saja, bukan seluruh paket
+    optimizePackageImports: ["lucide-react"],
   },
-  // @ts-ignore: Mengabaikan peringatan tipe data di editor
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
-};
+}
 
-export default nextConfig;
+export default nextConfig

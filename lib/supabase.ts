@@ -1,27 +1,17 @@
-import { createBrowserClient } from '@supabase/ssr'
+import { createBrowserClient } from "@supabase/ssr"
 
-// 1. Ambil kredensial dari environment variables (.env.local)
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-
-// 2. Validasi sederhana untuk memastikan .env.local sudah terisi
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.error("Peringatan: Supabase URL atau Anon Key belum disetting di .env.local")
-}
+let client: ReturnType<typeof createBrowserClient> | null = null
 
 /**
- * Fungsi getSupabase
- * Menggunakan createBrowserClient agar Supabase otomatis mengelola
- * cookie di browser, sehingga Middleware bisa mendeteksi status login.
+ * Satu instance Supabase browser client untuk seluruh aplikasi.
+ * Cookie sesi dikelola otomatis agar middleware bisa membaca status login.
  */
-let supabaseClient: any = null
-
 export const getSupabase = () => {
-  if (!supabaseClient) {
-    supabaseClient = createBrowserClient(
-      supabaseUrl!,
-      supabaseAnonKey!
-    )
+  if (!client) {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    if (!url || !key) console.error("Supabase URL / Anon Key belum diisi di .env.local")
+    client = createBrowserClient(url!, key!)
   }
-  return supabaseClient
+  return client
 }

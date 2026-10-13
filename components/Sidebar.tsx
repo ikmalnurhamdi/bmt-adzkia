@@ -1,248 +1,143 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useEffect, useState } from "react"
 import Image from "next/image"
-import { useRouter } from "next/navigation"
-import { 
-  LayoutDashboard, Users, Wallet, 
-  Settings2, ChevronLeft, ChevronRight, AlertCircle, Utensils, Coins, BarChart3, X, ClipboardList
+import Link from "next/link"
+import {
+  LayoutDashboard, Users, Wallet, Settings2, ChevronLeft, ChevronRight,
+  AlertCircle, BarChart3, ClipboardList,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { APP_NAME } from "@/lib/config"
 
 interface SidebarProps {
-  activeTab: string;
-  setActiveTab: (tab: string) => void;
-  isOpenMobile: boolean;
-  setIsOpenMobile: (open: boolean) => void;
+  pathname: string
+  isOpenMobile: boolean
+  setIsOpenMobile: (open: boolean) => void
 }
 
-export default function Sidebar({ activeTab, setActiveTab, isOpenMobile, setIsOpenMobile }: SidebarProps) {
-  const [mounted, setMounted] = useState(false)
+const MENU = [
+  { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/siswa", label: "Data Siswa", icon: Users },
+  { href: "/transaksi", label: "Transaksi", icon: Wallet },
+  { divider: "Laporan" },
+  { href: "/tunggakan", label: "Tunggakan", icon: AlertCircle },
+  { href: "/rekap-siswa", label: "Rekap Siswa", icon: ClipboardList },
+  { href: "/laporan-keuangan", label: "Laporan Keuangan", icon: BarChart3 },
+] as const
+
+export default function Sidebar({ pathname, isOpenMobile, setIsOpenMobile }: SidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false)
-  const router = useRouter()
 
-  // 1. Inisialisasi status dari localStorage
   useEffect(() => {
-    const saved = localStorage.getItem("sidebar-collapsed");
-    if (saved === "true") setIsCollapsed(true);
-    setMounted(true);
-  }, []);
+    if (localStorage.getItem("sidebar-collapsed") === "true") setIsCollapsed(true)
+  }, [])
 
-  // 2. Simpan status ke localStorage
-  useEffect(() => {
-    if (mounted) {
-      localStorage.setItem("sidebar-collapsed", isCollapsed.toString());
-    }
-  }, [isCollapsed, mounted]);
-
-  // Navigasi Mulus tanpa kedip
-  const navigateTo = (tab: string, path: string) => {
-    setActiveTab(tab);
-    if (isOpenMobile) setIsOpenMobile(false);
-    
-    // Gunakan push untuk navigasi internal SPA
-    router.push(path);
-  };
-
-  // 3. Skeleton Sidebar saat Hydration untuk mencegah Layout Shift
-  if (!mounted) {
-    return <aside className="fixed lg:sticky top-0 left-0 z-50 h-screen bg-sky-600 w-64 border-r border-sky-500/30" /> 
+  const toggle = (v: boolean) => {
+    setIsCollapsed(v)
+    localStorage.setItem("sidebar-collapsed", String(v))
   }
+
+  const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href))
+  const closeMobile = () => isOpenMobile && setIsOpenMobile(false)
 
   return (
     <>
-      {/* Overlay Mobile dengan Transisi Lembut */}
       {isOpenMobile && (
-        <div 
-          className="fixed inset-0 bg-black/40 z-[60] lg:hidden backdrop-blur-sm transition-opacity duration-300" 
-          onClick={() => setIsOpenMobile(false)} 
-        />
+        <div className="fixed inset-0 bg-black/40 z-[60] lg:hidden" onClick={() => setIsOpenMobile(false)} />
       )}
 
-      <aside className={cn(
-        "fixed lg:sticky top-0 left-0 z-[70] h-screen bg-sky-600 text-white transition-all duration-300 ease-in-out flex flex-col shadow-xl border-r border-sky-500/30",
-        isCollapsed ? 'w-17' : 'w-59',
-        isOpenMobile ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
-      )}>
-        {/* Dekorasi Grid Halus */}
-        <div className="absolute inset-0 opacity-5 pointer-events-none" 
-             style={{ backgroundImage: 'linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)', backgroundSize: '20px 20px' }}>
-        </div>
-
-        <div className="relative z-10 flex flex-col h-full">
-          {/* Header Sidebar */}
-          <div className={cn(
-            "py-6 px-4 flex flex-col border-b border-sky-400/20 transition-all",
-            isCollapsed ? 'items-center' : 'items-start'
-          )}>
-            <div className="flex items-center justify-between w-full">
-              <div className="flex items-center gap-3">
-                <div className="bg-white p-1.5 rounded-xl shrink-0 flex items-center justify-center shadow-lg shadow-sky-900/20">
-                  <Image src="/logo.png" alt="Logo" width={24} height={24} className="object-contain" />
-                </div>
-                {!isCollapsed && (
-                  <div className="flex flex-col">
-                    <span className="font-black tracking-tighter text-lg leading-none uppercase">
-                      BMT ADZKIA
-                    </span>
-                    <span className="text-[8px] font-bold text-sky-200 uppercase tracking-widest mt-0.5">Al - Hidayah Cisadap</span>
-                  </div>
-                )}
-              </div>
-              
-              {!isCollapsed && (
-                <button 
-                  className="hidden lg:flex p-1.5 hover:bg-sky-500 rounded-lg transition-colors text-sky-200 hover:text-white" 
-                  onClick={() => setIsCollapsed(true)}
-                >
-                  <ChevronLeft size={18} />
-                </button>
-              )}
+      <aside
+        className={cn(
+          "fixed lg:sticky top-0 left-0 z-[70] h-screen shrink-0 bg-gradient-to-b from-sky-700 to-sky-800 text-white flex flex-col shadow-xl transition-[width,transform] duration-200",
+          isCollapsed ? "w-16" : "w-60",
+          isOpenMobile ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+        )}
+      >
+        <div className={cn("py-5 px-4 border-b border-white/10 flex items-center", isCollapsed ? "justify-center" : "justify-between")}>
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="bg-white p-1.5 rounded-xl shrink-0 shadow-lg shadow-sky-950/20">
+              <Image src="/logo.png" alt="Logo" width={24} height={24} className="object-contain" priority />
             </div>
-
-            {/* Role Label */}
-            {!isCollapsed ? (
-              <div className="mt-4 px-2 py-1 bg-yellow-400/10 rounded-md border border-yellow-400/20 w-full">
-                <p className="text-[9px] font-black text-yellow-400 uppercase tracking-widest text-center">
-                  Administrator
-                </p>
-              </div>
-            ) : (
-              <div className="mt-4 w-8 h-8 rounded-lg border border-sky-400/30 bg-sky-700/40 flex items-center justify-center text-[11px] font-black text-yellow-400 uppercase shadow-inner">
-                AD
+            {!isCollapsed && (
+              <div className="min-w-0">
+                <p className="font-black tracking-tight text-[15px] leading-none uppercase truncate">{APP_NAME}</p>
+                <p className="text-[8px] font-bold text-sky-200 uppercase tracking-widest mt-1">Rekap Keuangan</p>
               </div>
             )}
           </div>
-
-          {/* Tombol Expand Floating */}
-          {isCollapsed && (
-            <button 
-              onClick={() => setIsCollapsed(false)} 
-              className="hidden lg:flex absolute -right-3 top-20 bg-yellow-400 p-1 rounded-full border-2 border-sky-600 z-[80] hover:bg-yellow-300 transition-all text-sky-900 shadow-lg hover:scale-110 active:scale-95"
+          {!isCollapsed && (
+            <button
+              aria-label="Ciutkan sidebar"
+              className="hidden lg:flex p-1.5 hover:bg-white/10 rounded-lg text-sky-200 hover:text-white"
+              onClick={() => toggle(true)}
             >
-              <ChevronRight size={14} strokeWidth={4} />
+              <ChevronLeft size={18} />
             </button>
           )}
-          
-          {/* Navigation Menu */}
-          <nav className="flex-1 p-3 space-y-1 mt-2 overflow-y-auto custom-scrollbar">
-            <NavItem 
-              icon={<LayoutDashboard size={20}/>} 
-              label="Dashboard" 
-              active={activeTab === "overview"} 
-              collapsed={isCollapsed} 
-              onClick={() => navigateTo("overview", "/")} 
-            />
-            <NavItem 
-              icon={<Users size={20}/>} 
-              label="Data Santri" 
-              active={activeTab === "santri"} 
-              collapsed={isCollapsed} 
-              onClick={() => navigateTo("santri", "/santri")} 
-            />
-            <NavItem 
-              icon={<Wallet size={20}/>} 
-              label="Transaksi" 
-              active={activeTab === "transaksi"} 
-              collapsed={isCollapsed} 
-              onClick={() => navigateTo("transaksi", "/transaksi")} 
-            />
-
-            <div className="my-4 px-3 flex items-center gap-2 opacity-30">
-               {!isCollapsed && <span className="text-[9px] font-black uppercase tracking-widest">Reports & Tools</span>}
-               <div className="h-px bg-white flex-1"></div>
-            </div>
-
-            <NavItem 
-              icon={<Utensils size={20}/>} 
-              label="Laporan DPU" 
-              active={activeTab === "dashboard-dpu"} 
-              collapsed={isCollapsed} 
-              onClick={() => navigateTo("dpu", "/dashboard-dpu")} 
-            />
-            <NavItem 
-              icon={<Coins size={20}/>} 
-              label="Uang Saku" 
-              active={activeTab === "uang-jajan"} 
-              collapsed={isCollapsed} 
-              onClick={() => navigateTo("uang-jajan", "/uang-jajan")} 
-            />
-            <NavItem 
-              icon={<AlertCircle size={20}/>} 
-              label="Tunggakan" 
-              active={activeTab === "tunggakan"} 
-              collapsed={isCollapsed} 
-              onClick={() => navigateTo("tunggakan", "/tunggakan")} 
-            />
-            <NavItem 
-              icon={<BarChart3 size={20}/>} 
-              label="Laporan Keuangan" 
-              active={activeTab === "laporan-keuangan"} 
-              collapsed={isCollapsed} 
-              onClick={() => navigateTo("keuangan", "/laporan-keuangan")} 
-            />
-            <NavItem 
-              icon={<ClipboardList size={20}/>} 
-              label="Rekap Transaksi" 
-              active={activeTab === "rekap-transaksi"} 
-              collapsed={isCollapsed} 
-              onClick={() => navigateTo("rekap-transaksi", "/rekap-transaksi-santri")} 
-            />
-            
-            <div className="pt-4 mt-4 border-t border-sky-400/20">
-              <NavItem 
-                icon={<Settings2 size={20}/>} 
-                label="Pengaturan Biaya" 
-                active={activeTab === "pengaturan-iuran"} 
-                collapsed={isCollapsed} 
-                onClick={() => navigateTo("pengaturan-iuran", "/pengaturan-iuran")} 
-              />
-            </div>
-          </nav>
-
-          {/* Footer Version */}
-          {!isCollapsed && (
-            <div className="p-4 border-t border-sky-400/10">
-              <div className="flex items-center justify-center gap-2 opacity-40">
-                <div className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse"></div>
-                <p className="text-[9px] text-sky-100 font-bold uppercase tracking-[0.2em]">Adzkia System v1.0</p>
-              </div>
-            </div>
-          )}
         </div>
-      </aside>
 
-      <style jsx global>{`
-        .custom-scrollbar::-webkit-scrollbar { width: 3px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
-      `}</style>
+        {isCollapsed && (
+          <button
+            aria-label="Lebarkan sidebar"
+            onClick={() => toggle(false)}
+            className="hidden lg:flex absolute -right-3 top-16 bg-yellow-400 p-1 rounded-full border-2 border-sky-700 z-[80] text-sky-900 shadow-lg hover:scale-110 transition-transform"
+          >
+            <ChevronRight size={14} strokeWidth={4} />
+          </button>
+        )}
+
+        <nav className="flex-1 p-3 space-y-1 overflow-y-auto sidebar-scroll">
+          {MENU.map((m, i) =>
+            "divider" in m ? (
+              <div key={i} className="pt-4 pb-1 px-3 flex items-center gap-2 opacity-40">
+                {!isCollapsed && <span className="text-[9px] font-black uppercase tracking-widest">{m.divider}</span>}
+                <div className="h-px bg-white flex-1" />
+              </div>
+            ) : (
+              <NavItem key={m.href} {...m} active={isActive(m.href)} collapsed={isCollapsed} onClick={closeMobile} />
+            )
+          )}
+          <div className="pt-3 mt-3 border-t border-white/10">
+            <NavItem
+              href="/pengaturan" label="Pengaturan" icon={Settings2}
+              active={isActive("/pengaturan")} collapsed={isCollapsed} onClick={closeMobile}
+            />
+          </div>
+        </nav>
+
+        {!isCollapsed && (
+          <div className="p-4 border-t border-white/10 flex items-center justify-center gap-2 opacity-50">
+            <div className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+            <p className="text-[9px] font-bold uppercase tracking-[0.2em]">v2.0 · Administrator</p>
+          </div>
+        )}
+      </aside>
     </>
   )
 }
 
-function NavItem({ icon, label, active, collapsed, onClick }: any) {
+function NavItem({ href, label, icon: Icon, active, collapsed, onClick }: {
+  href: string
+  label: string
+  icon: React.ComponentType<{ size?: number }>
+  active: boolean
+  collapsed: boolean
+  onClick: () => void
+}) {
   return (
-    <button 
+    <Link
+      href={href}
       onClick={onClick}
-      title={collapsed ? label : ""}
+      title={collapsed ? label : undefined}
       className={cn(
-        "flex items-center gap-3 w-full p-3 rounded-xl transition-all duration-200 font-bold text-[13px] group relative",
-        active 
-          ? 'bg-yellow-400 text-sky-900 shadow-lg shadow-sky-900/20' 
-          : 'text-sky-50 hover:bg-white/10 hover:translate-x-1',
-        collapsed ? 'justify-center' : ''
+        "flex items-center gap-3 w-full p-3 rounded-xl transition-colors font-bold text-[13px]",
+        active ? "bg-yellow-400 text-sky-900 shadow-lg shadow-sky-950/20" : "text-sky-50 hover:bg-white/10",
+        collapsed && "justify-center"
       )}
     >
-      <span className={cn("shrink-0 transition-transform", active ? 'scale-110' : 'group-hover:scale-110')}>
-        {icon}
-      </span>
+      <Icon size={20} />
       {!collapsed && <span className="whitespace-nowrap tracking-tight">{label}</span>}
-      
-      {/* Indikator Aktif di samping (jika tidak collapsed) */}
-      {active && !collapsed && (
-        <div className="absolute right-2 w-1.5 h-1.5 rounded-full bg-sky-800 animate-in fade-in zoom-in duration-300"></div>
-      )}
-    </button>
+    </Link>
   )
 }

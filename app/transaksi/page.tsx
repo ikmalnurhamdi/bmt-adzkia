@@ -1,269 +1,185 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
-// PERBAIKAN: Menambahkan 'History' ke dalam destructured import lucide-react
-import { Plus, Search, Receipt, CheckCircle2, Loader2, AlertCircle, Trash2, Calendar, FileText, History } from "lucide-react"
+import { useCallback, useEffect, useRef, useState } from "react"
+import { FileText, Loader2, Plus, Receipt, Search, Trash2 } from "lucide-react"
 import { getSupabase } from "@/lib/supabase"
-import Swal from "sweetalert2"
+import { useMaster } from "@/lib/master"
+import { useDebounce } from "@/hooks/useDebounce"
+import { fail, konfirmasi, toast } from "@/lib/alert"
+import { PAGE_SIZE, UNIT } from "@/lib/config"
+import { BULAN_NAMES, labelPeriode } from "@/lib/constants"
+import { rentangTanggal, rupiah, tanggal } from "@/lib/format"
+import { cetakKwitansi } from "@/lib/kwitansi"
 import { cn } from "@/lib/utils"
-
-// Import Helper & Komponen Hasil Refactor
-import { BULAN_NAMES, YEAR_OPTIONS, cetakKwitansiPDF, getTargetDinamis } from "./utils/transactionHelpers"
-import PaymentCell from "./components/PaymentCell"
-import PaymentModal from "./components/PaymentModal"
-import HistoryModal from "./components/HistoryModal"
+import type { RekapKategori, TransaksiRow } from "@/lib/types"
+import { Empty, KategoriSelect, PageHeader, Pagination, SkeletonRows, TahunSelect, ui } from "@/components/ui"
+import PaymentModal from "@/components/transaksi/PaymentModal"
 
 export default function TransaksiPage() {
-  const [santriList, setSantriList] = useState<any[]>([])
-  const [pembayaranList, setPembayaranList] = useState<any[]>([])
-  const [masterTarif, setMasterTarif] = useState<any[]>([])
-  const [searchTerm, setSearchTerm] = useState("")
-  const [filterBulan, setFilterBulan] = useState(new Date().getMonth() + 1)
-  const [filterTahun, setFilterTahun] = useState(new Date().getFullYear())
-  const [printingId, setPrintingId] = useState<string | null>(null)
-  const [isModalOpen, setIsModalOpen] = useState(false)
-  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false)
+  const { tahunAjaran, kategori, tahunDefault } = useMaster()
+  const [tahunPilih, setTahunPilih] = useState<number | null>(null)
+  const tahun = tahunPilih ?? tahunDefault
+  const [bulan, setBulan] = useState<number>(new Date().getMonth() + 1) // 0 = setahun
+  const [kat, setKat] = useState("")
+  const [search, setSearch] = useState("")
+  const q = useDebounce(search.trim())
+  const [page, setPage] = useState(0)
 
-  useEffect(() => { loadAllData() }, [filterBulan, filterTahun])
+  const [rows, setRows] = useState<TransaksiRow[]>([])
+  const [total, setTotal] = useState(0)
+  const [rekap, setRekap] = useState<RekapKategori[]>([])
+  const [loading, setLoading] = useState(true)
+  const [open, setOpen] = useState(false)
+  const [printing, setPrinting] = useState<string | null>(null)
+  const reqId = useRef(0)
 
-  async function loadAllData() {
-    const supabase = getSupabase()
-    const [resSantri, resPay, resTarif] = await Promise.all([
-      supabase.from("santri").select("*").order("nama_lengkap", { ascending: true }),
-      supabase.from("transaksi_pembayaran_v2").select("*").eq("bulan", filterBulan).eq("tahun", filterTahun),
-      supabase.from("tarif").select("*").eq("angkatan", 2026)
-    ])
-    setSantriList(resSantri.data || [])
-    setPembayaranList(resPay.data || [])
-    setMasterTarif(resTarif.data || [])
+  const muat = useCallback(async () => {
+    const id = ++reqId.current
+    setLoading(true)
+    const sb = getSupabase()
+    const { awal, akhir } = rentangTanggal(tahun, bulan || null)
+
+    let query = sb
+      .from("transaksi_pembayaran")
+      .select(
+        "id,siswa_id,kategori_id,tahun_ajaran_id,periode,jumlah_bayar,tanggal_bayar,metode,no_kwitansi,keterangan,created_at,siswa!inner(nama_lengkap,nis,kelas,tingkat,unit),kategori:kategori_pembayaran(nama,tipe_tagihan)",
+        { count: "exact" }
+      )
+      .eq("siswa.unit", UNIT)
+      .gte("tanggal_bayar", awal)
+      .lt("tanggal_bayar", akhir)
+      .order("tanggal_bayar", { ascending: false })
+      .order("created_at", { ascending: false })
+      .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1)
+
+    if (kat) query = query.eq("kategori_id", kat)
+    if (q) query = query.ilike("siswa.nama_lengkap", `%${q.replace(/[%*]/g, " ")}%`)
+
+    const [res, rk] = await Promise.all([query, sb.rpc("fn_rekap_kategori", { p_tahun: tahun, p_bulan: bulan || null })])
+    if (id !== reqId.current) return
+    setLoading(false)
+    if (res.error) return fail(res.error)
+    setRows((res.data ?? []) as unknown as TransaksiRow[])
+    setTotal(res.count ?? 0)
+    setRekap((rk.data ?? []) as RekapKategori[])
+  }, [tahun, bulan, kat, q, page])
+
+  useEffect(() => {
+    muat()
+  }, [muat])
+  useEffect(() => setPage(0), [tahun, bulan, kat, q])
+
+  const hapus = async (t: TransaksiRow) => {
+    if (!(await konfirmasi("Hapus transaksi ini?", `${t.siswa?.nama_lengkap} · ${rupiah(t.jumlah_bayar)}`, "Ya, Hapus", true))) return
+    const { error } = await getSupabase().from("transaksi_pembayaran").delete().eq("id", t.id)
+    if (error) return fail(error)
+    toast("Transaksi dihapus")
+    muat()
   }
 
-  const santriWithTransactions = useMemo(() => {
-    const idsWithTrx = new Set(pembayaranList.map(p => p.santri_id))
-    return santriList.filter(s =>
-      idsWithTrx.has(s.id) &&
-      (s.nama_lengkap.toLowerCase().includes(searchTerm.toLowerCase()) || (s.nis && s.nis.toString().includes(searchTerm)))
-    )
-  }, [santriList, pembayaranList, searchTerm])
-
-  const handleDeleteSingleTrx = async (id: string) => {
-    await getSupabase().from("transaksi_pembayaran_v2").delete().eq("id", id)
-    loadAllData()
-  }
-
-  const handleDeleteTrxBySantri = async (s: any) => {
-    const res = await Swal.fire({
-      title: 'Hapus Transaksi?',
-      text: `Hapus seluruh catatan pembayaran ${s.nama_lengkap} pada periode ini?`,
-      icon: 'warning',
-      showCancelButton: true,
-      confirmButtonColor: '#ef4444',
-      confirmButtonText: 'Ya, Hapus'
-    })
-    if (res.isConfirmed) {
-      try {
-        const { error } = await getSupabase()
-          .from("transaksi_pembayaran_v2")
-          .delete()
-          .eq("santri_id", s.id)
-          .eq("bulan", filterBulan)
-          .eq("tahun", filterTahun)
-        if (error) throw error
-        Swal.fire({ icon: 'success', title: 'Data dihapus', timer: 1000, showConfirmButton: false })
-        loadAllData()
-      } catch (err: any) {
-        Swal.fire("Gagal", err.message, "error")
-      }
+  const cetak = async (t: TransaksiRow) => {
+    setPrinting(t.id)
+    try {
+      await cetakKwitansi(t)
+    } catch (e) {
+      fail(e)
+    } finally {
+      setPrinting(null)
     }
   }
 
-  const handleCetakKwitansi = async (s: any) => {
-    setPrintingId(s.id)
-    await cetakKwitansiPDF(s, filterBulan, filterTahun, pembayaranList, masterTarif)
-    setPrintingId(null)
-  }
+  const totalPeriode = rekap.reduce((a, r) => a + r.total, 0)
 
   return (
-    <div className="p-4 lg:p-6 space-y-5 font-sans text-slate-800 bg-slate-50 min-h-screen">
-      
-      {/* ── HEADER ── */}
-      <div className="bg-white border rounded-2xl p-5 flex flex-col sm:flex-row gap-4 sm:items-center justify-between shadow-sm">
-        <div className="flex items-center gap-3">
-          <div className="bg-sky-100 p-2.5 rounded-xl">
-            <Receipt size={22} className="text-sky-700" />
-          </div>
-          <div>
-            <h1 className="text-lg font-black text-slate-900 tracking-tight uppercase">Monitoring Transaksi</h1>
-            <p className="text-xs text-slate-400 mt-1 flex items-center gap-1.5">
-              <Calendar size={11} className="text-sky-500" />
-              Periode: <span className="text-sky-600 font-bold">{BULAN_NAMES[filterBulan - 1]} {filterTahun}</span>
-            </p>
-          </div>
-        </div>
-        
-        <div className="flex flex-wrap items-center gap-2">
-          <button 
-            onClick={() => setIsHistoryModalOpen(true)} 
-            className="inline-flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-black uppercase px-4 py-2.5 rounded-xl transition-all border border-slate-200"
-          >
-            <History size={14} /> Riwayat Tahunan
-          </button>
+    <div className="p-4 lg:p-6 space-y-4 fade-up">
+      <PageHeader
+        icon={<Receipt size={22} />}
+        title="Transaksi"
+        subtitle={`Pembayaran diterima · ${bulan ? BULAN_NAMES[bulan - 1] : "Setahun"} ${tahun}`}
+        actions={<button className={ui.btnPrimary} onClick={() => setOpen(true)}><Plus size={14} strokeWidth={3} /> Input Pembayaran</button>}
+      />
 
-          <button onClick={() => setIsModalOpen(true)} className="inline-flex items-center gap-2 bg-sky-700 hover:bg-sky-800 text-white text-xs font-black uppercase px-5 py-2.5 rounded-xl transition-all shadow-md">
-            <Plus size={15} strokeWidth={3} /> Input Pembayaran
-          </button>
+      {/* Ringkasan periode per kategori */}
+      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-3">
+        <div className="col-span-2 md:col-span-1 bg-sky-700 text-white rounded-2xl p-4 shadow-sm">
+          <p className="text-[9px] font-black uppercase tracking-widest text-sky-200">Total Periode</p>
+          <p className="text-lg font-black mt-1 leading-tight">{rupiah(totalPeriode)}</p>
         </div>
+        {rekap.map((r) => (
+          <div key={r.kategori_id} className={cn(ui.card, "p-4")}>
+            <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 truncate">{r.nama}</p>
+            <p className="text-sm font-black text-slate-800 mt-1">{rupiah(r.total)}</p>
+            <p className="text-[9px] font-bold text-slate-300 uppercase">{r.jumlah} transaksi</p>
+          </div>
+        ))}
       </div>
 
-      {/* ── TABLE AREA ── */}
-      <div className="bg-white border rounded-2xl shadow-sm overflow-hidden">
-        <div className="px-5 py-3.5 border-b flex flex-wrap gap-3 items-center">
-          <div className="relative flex-1 min-w-[200px] max-w-xs">
+      <div className={cn(ui.card, "overflow-hidden")}>
+        <div className="flex flex-wrap items-center gap-2 p-3 border-b border-slate-100">
+          <div className="relative flex-1 min-w-[180px] max-w-xs">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
-            <input
-              type="text" placeholder="Cari nama atau NIS..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 rounded-lg border text-xs bg-slate-50 outline-none"
-            />
+            <input type="search" placeholder="Cari nama siswa..." value={search} onChange={(e) => setSearch(e.target.value)} className={cn(ui.input, "pl-9 py-2")} />
           </div>
-          <div className="flex items-center gap-2 border rounded-lg px-3 py-1.5 bg-slate-50">
-            <select value={filterBulan} onChange={e => setFilterBulan(Number(e.target.value))} className="text-xs font-bold uppercase bg-transparent outline-none">
-              {BULAN_NAMES.map((b, i) => <option key={i} value={i + 1}>{b}</option>)}
-            </select>
-            <div className="w-px h-4 bg-slate-200" />
-            <select value={filterTahun} onChange={e => setFilterTahun(Number(e.target.value))} className="text-xs font-bold bg-transparent outline-none">
-              {YEAR_OPTIONS.map(y => <option key={y} value={y}>{y}</option>)}
-            </select>
-          </div>
-          <span className="text-xs text-slate-400">{santriWithTransactions.length} santri</span>
+          <select aria-label="Bulan" value={bulan} onChange={(e) => setBulan(Number(e.target.value))} className={cn(ui.input, "w-auto py-1.5")}>
+            <option value={0}>Setahun penuh</option>
+            {BULAN_NAMES.map((b, i) => <option key={b} value={i + 1}>{b}</option>)}
+          </select>
+          <TahunSelect value={tahun} onChange={setTahunPilih} tahunAjaran={tahunAjaran} />
+          <KategoriSelect value={kat} onChange={setKat} kategori={kategori} />
+          {loading && <Loader2 size={16} className="animate-spin text-sky-600" />}
         </div>
 
-        <div className="overflow-x-auto max-h-[560px]">
-          <table className="w-full border-collapse text-left">
-            <thead className="sticky top-0 z-10 bg-slate-800 text-white text-[9px] font-black uppercase tracking-widest">
+        <div className="overflow-x-auto custom-scrollbar">
+          <table className="w-full text-left">
+            <thead className="bg-slate-800 text-white">
               <tr>
-                <th className="px-5 py-3.5 border-r border-slate-700">Santri</th>
-                <th className="px-4 py-3.5 text-center border-r border-slate-700">Jenjang</th>
-                <th className="px-4 py-3.5 text-center border-r border-slate-700">Dapur</th>
-                <th className="px-4 py-3.5 text-center border-r border-slate-700">Pesantren</th>
-                <th className="px-4 py-3.5 text-center border-r border-slate-700">Sekolah</th>
-                <th className="px-4 py-3.5 text-center border-r border-slate-700">Lainnya</th>
-                <th className="px-4 py-3.5 text-center border-r border-slate-700">Status</th>
-                <th className="px-4 py-3.5 text-center">Aksi</th>
+                <th className={ui.th}>Tanggal</th>
+                <th className={ui.th}>Siswa</th>
+                <th className={ui.th}>Pembayaran</th>
+                <th className={`${ui.th} text-right`}>Jumlah</th>
+                <th className={ui.th}>Keterangan</th>
+                <th className={`${ui.th} text-center`}>Aksi</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-50">
-              {santriWithTransactions.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="text-center py-16 text-slate-400">Belum ada transaksi pada periode ini.</td>
-                </tr>
-              ) : santriWithTransactions.map(s => {
-                const targetD = getTargetDinamis(s, "dapur", masterTarif)
-                const targetP = getTargetDinamis(s, "pesantren", masterTarif)
-                const targetS = getTargetDinamis(s, "sekolah", masterTarif)
-                
-                const bayarD = pembayaranList.filter(p => p.santri_id === s.id && p.kategori === "dapur").reduce((a, b) => a + b.jumlah_bayar, 0)
-                const bayarP = pembayaranList.filter(p => p.santri_id === s.id && p.kategori === "pesantren").reduce((a, b) => a + b.jumlah_bayar, 0)
-                const bayarS = pembayaranList.filter(p => p.santri_id === s.id && p.kategori === "sekolah").reduce((a, b) => a + b.jumlah_bayar, 0)
-                
-                // Transaksi khusus lainnya
-                const trxLainnya = pembayaranList.filter(p => p.santri_id === s.id && p.kategori === "lainnya")
-                
-                // Status hanya memperhitungkan Dapur, Pesantren, dan Sekolah
-                const isFullyLunas = (bayarD >= targetD) && (bayarP >= targetP) && (bayarS >= targetS)
-
-                return (
-                  <tr key={s.id} className={cn("hover:bg-slate-50/70 text-sm", isFullyLunas && "bg-emerald-50/30")}>
-                    <td className="px-5 py-3 border-r border-slate-50 align-top">
-                      <div className="font-bold text-xs uppercase text-slate-800">{s.nama_lengkap}</div>
-                      <div className="text-[10px] text-sky-600 font-semibold mt-0.5">NIS: {s.nis || "—"}</div>
+            <tbody className="divide-y divide-slate-100 text-xs">
+              {loading && rows.length === 0 ? (
+                <SkeletonRows cols={6} />
+              ) : rows.length === 0 ? (
+                <tr><td colSpan={6}><Empty text="Belum ada transaksi pada periode ini" /></td></tr>
+              ) : (
+                rows.map((t) => (
+                  <tr key={t.id} className={cn("hover:bg-slate-50/70", loading && "opacity-60")}>
+                    <td className="px-4 py-3 font-semibold text-slate-500 whitespace-nowrap">{tanggal(t.tanggal_bayar)}</td>
+                    <td className="px-4 py-3">
+                      <div className="font-black uppercase text-slate-800 leading-tight">{t.siswa?.nama_lengkap}</div>
+                      <div className="text-[10px] font-bold text-sky-600">NIS {t.siswa?.nis || "-"}</div>
                     </td>
-                    <td className="px-4 py-3 border-r text-center align-top">
-                      <span className="text-[9px] font-bold text-sky-700 bg-sky-50 border border-sky-200 px-2 py-1 rounded-full">{s.jenjang}</span>
-                    </td>
-                    <td className="px-4 py-3 border-r text-center align-top">
-                      <PaymentCell santri={s} jenis="dapur" pembayaranList={pembayaranList} masterTarif={masterTarif} onDeleteSingleTrx={handleDeleteSingleTrx} />
-                    </td>
-                    <td className="px-4 py-3 border-r text-center align-top">
-                      <PaymentCell santri={s} jenis="pesantren" pembayaranList={pembayaranList} masterTarif={masterTarif} onDeleteSingleTrx={handleDeleteSingleTrx} />
-                    </td>
-                    <td className="px-4 py-3 border-r text-center align-top">
-                      <PaymentCell santri={s} jenis="sekolah" pembayaranList={pembayaranList} masterTarif={masterTarif} onDeleteSingleTrx={handleDeleteSingleTrx} />
-                    </td>
-                    
-                    {/* KOLOM LAINNYA */}
-                    <td className="px-4 py-3 border-r text-center align-top">
-                      {trxLainnya.length > 0 ? (
-                        <div className="flex flex-col gap-1.5 items-center">
-                          {trxLainnya.map(trx => (
-                            <div key={trx.id} className="group relative flex flex-col items-center bg-white border border-slate-200 px-2 py-1 rounded-md w-full min-w-[70px]">
-                              <span className="text-[10px] font-bold text-slate-700">
-                                Rp {trx.jumlah_bayar.toLocaleString('id-ID')}
-                              </span>
-                              {trx.keterangan && (
-                                <span className="text-[9px] text-slate-500 lowercase text-center leading-tight mt-0.5">
-                                  {trx.keterangan}
-                                </span>
-                              )}
-                              <button 
-                                onClick={() => handleDeleteSingleTrx(trx.id)}
-                                className="absolute -right-1 -top-1 opacity-0 group-hover:opacity-100 bg-red-100 text-red-600 p-1 rounded-full shadow-sm transition-opacity"
-                              >
-                                <Trash2 size={10} />
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <span className="text-slate-300 text-[10px]">-</span>
+                    <td className="px-4 py-3">
+                      <div className="font-bold text-slate-700">{t.kategori?.nama}</div>
+                      {t.kategori && labelPeriode(t.kategori.tipe_tagihan, t.periode) !== "-" && (
+                        <div className="text-[10px] text-slate-400">{labelPeriode(t.kategori.tipe_tagihan, t.periode)}</div>
                       )}
                     </td>
-
-                    <td className="px-4 py-3 border-r text-center align-top">
-                      {isFullyLunas ? (
-                        <div className="flex flex-col items-center gap-1 mt-1">
-                          <CheckCircle2 size={16} className="text-emerald-500" />
-                          <span className="text-[9px] font-bold text-emerald-600 uppercase">Lunas</span>
-                        </div>
-                      ) : (
-                        <div className="flex flex-col items-center gap-1 mt-1">
-                          <AlertCircle size={16} className="text-orange-400" />
-                          <span className="text-[9px] font-bold text-orange-500 uppercase">Kurang</span>
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-center align-top">
-                      <div className="flex items-center justify-center gap-1 mt-0.5">
-                        <button onClick={() => handleCetakKwitansi(s)} disabled={printingId === s.id} className="p-1.5 text-sky-600 hover:bg-sky-50 rounded-lg">
-                          {printingId === s.id ? <Loader2 size={15} className="animate-spin" /> : <FileText size={15} />}
+                    <td className="px-4 py-3 text-right font-black text-emerald-700 whitespace-nowrap">{rupiah(t.jumlah_bayar)}</td>
+                    <td className="px-4 py-3 text-slate-500 max-w-[200px] truncate">{t.keterangan || <span className="text-slate-300">—</span>}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex justify-center gap-1">
+                        <button title="Cetak kwitansi" aria-label="Cetak kwitansi" disabled={printing === t.id} onClick={() => cetak(t)} className="p-2 text-sky-600 hover:bg-sky-50 rounded-lg">
+                          {printing === t.id ? <Loader2 size={15} className="animate-spin" /> : <FileText size={15} />}
                         </button>
-                        <button onClick={() => handleDeleteTrxBySantri(s)} className="p-1.5 text-slate-300 hover:text-red-600 hover:bg-red-50 rounded-lg">
-                          <Trash2 size={15} />
-                        </button>
+                        <button title="Hapus" aria-label="Hapus" onClick={() => hapus(t)} className="p-2 text-slate-300 hover:text-red-600 hover:bg-red-50 rounded-lg"><Trash2 size={15} /></button>
                       </div>
                     </td>
                   </tr>
-                )
-              })}
+                ))
+              )}
             </tbody>
           </table>
         </div>
+        <Pagination page={page} total={total} size={PAGE_SIZE} onPage={setPage} />
       </div>
 
-      {/* ── MODAL COMPONENT ── */}
-      <PaymentModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        santriList={santriList}
-        onSuccessSave={loadAllData}
-      />
-
-      <HistoryModal
-        isOpen={isHistoryModalOpen}
-        onClose={() => setIsHistoryModalOpen(false)}
-        santriList={santriList}
-        masterTarif={masterTarif}
-      />
-
+      {open && <PaymentModal onClose={() => setOpen(false)} onSaved={muat} />}
     </div>
   )
 }

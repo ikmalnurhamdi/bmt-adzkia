@@ -1,51 +1,32 @@
-import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
-import "./globals.css";
-import ClientLayout from "@/components/client-layout";
-import Footer from "@/components/Footer";
+import type { Metadata, Viewport } from "next"
+import { Geist } from "next/font/google"
+import "./globals.css"
+import ClientLayout from "@/components/client-layout"
+import { APP_NAME, APP_DESC } from "@/lib/config"
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+  display: "swap",
+})
 
 export const metadata: Metadata = {
-  title: "BMT ADZKIA",
-  description: "Aplikasi Keuangan Pesantren Al-Hidayah Cisadap",
+  title: { default: APP_NAME, template: `%s · ${APP_NAME}` },
+  description: APP_DESC,
   manifest: "/manifest.json",
-  icons: {
-    icon: "/logo.png",
-    shortcut: "/logo.png",
-    apple: "/logo.png",
-  },
-};
+  icons: { icon: "/logo.png", shortcut: "/logo.png", apple: "/logo.png" },
+}
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+export const viewport: Viewport = {
+  themeColor: "#0369a1",
+}
+
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="id">
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        {/* ClientLayout membungkus Sidebar dan Header */}
-        <ClientLayout>
-          <div className="flex flex-col min-h-screen">
-            {/* Area Konten Utama */}
-            <main className="flex-1">
-              {children}
-            </main>
-            
-            {/* Footer diletakkan di sini agar selalu di bawah */}
-            <Footer />
-          </div>
-        </ClientLayout>
+    <html lang="id" className={geistSans.variable}>
+      <body className="antialiased">
+        <ClientLayout>{children}</ClientLayout>
       </body>
     </html>
-  );
+  )
 }
