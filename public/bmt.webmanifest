@@ -1,0 +1,14 @@
+{
+  "name": "BMT ADZKIA - Sistem Keuangan",
+  "short_name": "BMT Adzkia",
+  "description": "Sistem Keuangan Pesantren Terpadu",
+  "id": "/bmt",
+  "start_url": "/bmt",
+  "scope": "/bmt",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0284c7",
+  "icons": [
+    { "src": "/logo.png", "sizes": "256x256", "type": "image/png", "purpose": "any" }
+  ]
+}

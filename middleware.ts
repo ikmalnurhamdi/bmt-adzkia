@@ -1,39 +1,38 @@
-import { createServerClient } from "@supabase/ssr"
-import { NextResponse, type NextRequest } from "next/server"
+import type { NextRequest } from "next/server"
+import { appFromPath, canAccess, homeFor } from "@/lib/auth/roles"
+import { readSession, redirectWith } from "@/lib/auth/proxy-session"
 
 /**
- * Proteksi semua halaman (kecuali /login).
- * Memakai getSession() yang membaca cookie secara lokal (tanpa round-trip ke server Supabase
- * pada setiap navigasi). Keamanan data tetap dijaga oleh Row Level Security di database.
+ * Gerbang akses terpusat AMANAH.
+ *
+ *  - Belum login            -> /login
+ *  - Sudah login di /login  -> halaman awal sesuai peran
+ *  - /bmt/**                -> hanya peran bmt & admin
+ *  - /mts/**                -> hanya peran mts & admin
+ *  - Login tanpa peran      -> /akses-ditolak
+ *
+ * Data tetap dilindungi Row Level Security di database; ini lapisan UX + pertahanan awal.
  */
 export async function middleware(request: NextRequest) {
-  let response = NextResponse.next({ request })
-
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll: () => request.cookies.getAll(),
-        setAll: (cookiesToSet) => {
-          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
-          response = NextResponse.next({ request })
-          cookiesToSet.forEach(({ name, value, options }) => response.cookies.set(name, value, options))
-        },
-      },
-    }
-  )
-
-  const {
-    data: { session },
-  } = await supabase.auth.getSession()
-
+  const { response, authenticated, role } = await readSession(request)
   const path = request.nextUrl.pathname
-  if (!session && path !== "/login") {
-    return NextResponse.redirect(new URL("/login", request.url))
+
+  if (!authenticated) {
+    return path === "/login" ? response : redirectWith(request, "/login", response)
   }
-  if (session && path === "/login") {
-    return NextResponse.redirect(new URL("/", request.url))
+
+  if (path === "/login") {
+    return redirectWith(request, homeFor(role), response)
+  }
+
+  const app = appFromPath(path)
+  if (app && !canAccess(role, app)) {
+    return redirectWith(request, homeFor(role), response)
+  }
+
+  // Pengguna tanpa peran hanya boleh melihat halaman "akses ditolak".
+  if (!role && path !== "/akses-ditolak") {
+    return redirectWith(request, "/akses-ditolak", response)
   }
 
   return response
@@ -42,6 +41,6 @@ export async function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     // Kecualikan aset statis agar tidak membebani middleware
-    "/((?!_next/static|_next/image|favicon.ico|manifest.json|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|json|webmanifest)$).*)",
   ],
 }

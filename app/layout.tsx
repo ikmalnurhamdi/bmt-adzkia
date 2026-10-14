@@ -1,8 +1,7 @@
 import type { Metadata, Viewport } from "next"
 import { Geist } from "next/font/google"
 import "./globals.css"
-import ClientLayout from "@/components/client-layout"
-import { APP_NAME, APP_DESC } from "@/lib/config"
+import { PLATFORM_NAME, PLATFORM_DESC } from "@/lib/brand"
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -10,10 +9,13 @@ const geistSans = Geist({
   display: "swap",
 })
 
+/**
+ * Layout akar hanya menyediakan <html>/<body>.
+ * Kerangka tiap aplikasi (sidebar, header, footer) ada di app/bmt/layout.tsx dan app/mts/layout.tsx.
+ */
 export const metadata: Metadata = {
-  title: { default: APP_NAME, template: `%s · ${APP_NAME}` },
-  description: APP_DESC,
-  manifest: "/manifest.json",
+  title: { default: PLATFORM_NAME, template: `%s · ${PLATFORM_NAME}` },
+  description: PLATFORM_DESC,
   icons: { icon: "/logo.png", shortcut: "/logo.png", apple: "/logo.png" },
 }
 
@@ -24,9 +26,7 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="id" className={geistSans.variable}>
-      <body className="antialiased">
-        <ClientLayout>{children}</ClientLayout>
-      </body>
+      <body className="antialiased">{children}</body>
     </html>
   )
 }

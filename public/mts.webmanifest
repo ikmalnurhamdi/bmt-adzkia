@@ -1,0 +1,14 @@
+{
+  "name": "MTs ADZKIA MOBILE - Rekap Keuangan Sekolah",
+  "short_name": "MTs Adzkia",
+  "description": "Aplikasi Rekap Keuangan MTs Adzkia",
+  "id": "/mts",
+  "start_url": "/mts",
+  "scope": "/mts",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0369a1",
+  "icons": [
+    { "src": "/logo.png", "sizes": "256x256", "type": "image/png", "purpose": "any" }
+  ]
+}
