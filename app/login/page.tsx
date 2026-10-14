@@ -42,7 +42,7 @@ export default function LoginPage() {
           <div className="w-20 h-20 bg-sky-600 rounded-2xl flex items-center justify-center mb-4 shadow-lg shadow-sky-200 border-4 border-white">
             <Image src="/logo.png" alt="Logo" width={48} height={48} className="object-contain" priority />
           </div>
-          <h1 className="text-xl font-black text-slate-800 tracking-tight uppercase text-center">{PLATFORM_NAME}</h1>
+          <h1 className="text-xl font-black text-slate-800 tracking-tight uppercase text-center">LOGIN</h1>
           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1 text-center">BMT ADZKIA · MTs ADZKIA MOBILE</p>
         </div>
 
@@ -89,7 +89,7 @@ export default function LoginPage() {
         </form>
 
         <p className="mt-8 pt-6 border-t border-slate-50 text-center text-[9px] text-slate-400 font-bold uppercase tracking-[0.2em]">
-          Digitalisasi {PLATFORM_NAME}
+          Copyright © 2026 BMT ADZKIA - MTS ADZKIA MOBILE · All rights reserved.
         </p>
       </div>
     </div>

@@ -69,7 +69,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           title="Siswa Aktif"
-          value={`${ringkasan?.siswa_aktif ?? 0} Anak`}
+          value={`${ringkasan?.siswa_aktif ?? 0} Siswa`}
           sub={ringkasan?.calon ? `${ringkasan.calon} Calon PPDB` : "Terdaftar Aktif"}
           icon={<Users size={22} />}
           tone="sky"

@@ -1,5 +1,5 @@
 /** Identitas platform bersama (halaman login, pemilih aplikasi, metadata dasar). */
-export const PLATFORM_NAME = "AMANAH ADZKIA"
+export const PLATFORM_NAME = "APLIKASI TERPADU ADZKIA"
 export const PLATFORM_TAGLINE = "Sistem Keuangan Terpadu"
 export const PLATFORM_DESC = "Sistem keuangan terpadu BMT ADZKIA dan MTs ADZKIA MOBILE"
 export const DEVELOPER = "NurhaDev"
