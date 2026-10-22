@@ -14,7 +14,9 @@ interface PaymentCellProps {
 
 export default function PaymentCell({ santri, jenis, pembayaranList, masterTarif, onDeleteSingleTrx }: PaymentCellProps) {
   const target = getTargetDinamis(santri, jenis, masterTarif)
-  const trxInCell = pembayaranList.filter(p => p.santri_id === santri.id && p.kategori === jenis)
+  const trxInCell = pembayaranList
+    .filter(p => p.santri_id === santri.id && p.kategori === jenis)
+    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
   const totalTerbayar = trxInCell.reduce((a, b) => a + b.jumlah_bayar, 0)
   const isLunas = target === 0 || (target > 0 && totalTerbayar >= target)
 
@@ -23,7 +25,7 @@ export default function PaymentCell({ santri, jenis, pembayaranList, masterTarif
   return (
     <div className="flex flex-col gap-1 items-center justify-center min-h-[48px] py-1">
       <div className="flex flex-wrap gap-1 justify-center">
-        {trxInCell.map(t => (
+        {trxInCell.map((t, idx) => (
           <div key={t.id} className="group relative">
             <div className={cn(
               "px-2 py-1 rounded-md text-[10px] font-bold border cursor-help transition-all",
@@ -34,7 +36,9 @@ export default function PaymentCell({ santri, jenis, pembayaranList, masterTarif
               {t.jumlah_bayar.toLocaleString()}
             </div>
             <div className="hidden group-hover:flex absolute -top-9 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-[9px] py-1.5 px-2 rounded-lg z-50 shadow-xl items-center gap-2 whitespace-nowrap">
+              {trxInCell.length > 1 && <span className="font-bold text-sky-300">Cicilan ke-{idx + 1}</span>}
               <span>{new Date(t.created_at).toLocaleDateString('id-ID')}</span>
+              {t.keterangan && <span className="text-slate-300 max-w-[140px] truncate">· {t.keterangan}</span>}
               <button onClick={() => onDeleteSingleTrx(t.id)} className="text-red-400 hover:text-red-200 ml-1">
                 <Trash2 size={10} />
               </button>

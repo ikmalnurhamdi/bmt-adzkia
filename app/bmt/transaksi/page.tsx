@@ -254,6 +254,7 @@ export default function TransaksiPage() {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         santriList={santriList}
+        masterTarif={masterTarif}
         onSuccessSave={loadAllData}
       />
 
@@ -262,6 +263,7 @@ export default function TransaksiPage() {
         onClose={() => setIsHistoryModalOpen(false)}
         santriList={santriList}
         masterTarif={masterTarif}
+        onUpdate={loadAllData}
       />
 
     </div>
