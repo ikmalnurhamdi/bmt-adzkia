@@ -18,9 +18,13 @@ export default function SantriProfileCard({ santri, jumlahBulan }: { santri: any
       </div>
       <div className="mt-4 pt-3 border-t border-slate-100 grid grid-cols-2 gap-3 text-xs">
         <div>
-          <span className="text-[10px] text-slate-400 block mb-0.5">Tgl Masuk</span>
+          <span className="text-[10px] text-slate-400 block mb-0.5">
+            {santri.tanggal_mulai_tagihan ? "Mulai Tagihan" : "Tgl Masuk"}
+          </span>
           <span className="font-medium text-slate-700">
-            {santri.tanggal_masuk ? new Date(santri.tanggal_masuk).toLocaleDateString('id-ID', {day: 'numeric', month:'short', year:'numeric'}) : '-'}
+            {(santri.tanggal_mulai_tagihan || santri.tanggal_masuk)
+              ? new Date(santri.tanggal_mulai_tagihan || santri.tanggal_masuk).toLocaleDateString('id-ID', {day: 'numeric', month:'short', year:'numeric'})
+              : '-'}
           </span>
         </div>
         <div>

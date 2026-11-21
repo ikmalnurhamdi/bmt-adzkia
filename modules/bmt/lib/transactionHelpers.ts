@@ -61,6 +61,227 @@ export const getTargetDinamis = (santri: any, kategori: string, masterTarif: any
   return 0
 }
 
+export interface SantriRekapInput {
+  jenjang?: string | null
+  tanggal_masuk?: string | null
+  tanggal_mulai_tagihan?: string | null
+}
+
+export interface TransaksiRekapInput {
+  kategori?: string | null
+  bulan?: number | string | null
+  tahun?: number | string | null
+  jumlah_bayar?: number | string | null
+}
+
+export interface TarifItem {
+  komponen?: string | null
+  nominal?: number | null
+}
+
+export interface RekapPeriodeFilter {
+  bulan?: number | "semua"
+  tahun?: number | "semua"
+}
+
+export interface RekapTransaksiSantri {
+  totalPembayaran: number
+  totalPembayaranSyahriah: number
+  totalPembayaranLainnya: number
+  jumlahBulan: number
+  bulanMenunggak: number
+  totalTargetBulanan: number
+  totalKewajiban: number
+  totalTunggakan: number
+  totalLebihBayar: number
+  sisaPerKategori: {
+    dapur: number
+    pesantren: number
+    sekolah: number
+  }
+  belumWajibBayar: boolean
+  statusLunas: boolean
+}
+
+const parseYearMonth = (dateStr?: string | null): { year: number; month: number } | null => {
+  if (!dateStr) return null
+  const match = String(dateStr).match(/^(\d{4})-(\d{2})/)
+  if (match) {
+    const year = Number(match[1])
+    const month = Number(match[2])
+    if (year > 0 && month >= 1 && month <= 12) return { year, month }
+  }
+  const d = new Date(dateStr)
+  if (Number.isNaN(d.getTime())) return null
+  return { year: d.getFullYear(), month: d.getMonth() + 1 }
+}
+
+/**
+ * Menghitung rekap kewajiban & tunggakan bulanan seorang santri.
+ * - Default (tanpa filter bulan/tahun): menghitung keseluruhan transaksi & akumulasi bulan wajib s/d bulan berjalan.
+ * - Dengan filter bulan & tahun: menghitung transaksi, kewajiban, dan tunggakan khusus untuk periode yang dipilih.
+ * - Kewajiban bulanan hanya berasal dari 3 kategori syahriah wajib: dapur, pesantren, sekolah.
+ * - Tunggakan dihitung per bulan aktif dan per kategori wajib (tidak saling menutup antar kategori/bulan).
+ * - Pembayaran kategori "lainnya" (di luar syahriah) TIDAK mempengaruhi kewajiban, tunggakan, atau lebih bayar bulanan.
+ */
+export const hitungRekapTransaksiSantri = (
+  santri: SantriRekapInput | null | undefined,
+  transaksiSantri: TransaksiRekapInput[],
+  masterTarif: TarifItem[],
+  referenceDate: Date = new Date(),
+  filter?: RekapPeriodeFilter
+): RekapTransaksiSantri | null => {
+  if (!santri) return null
+
+  const filterTahun = filter?.tahun && filter.tahun !== "semua" ? Number(filter.tahun) : null
+  const filterBulan = filter?.bulan && filter.bulan !== "semua" ? Number(filter.bulan) : null
+
+  const targetPerKategori: Record<(typeof SYAHRIAH_KATEGORI)[number], number> = {
+    dapur: getTargetDinamis(santri, "dapur", masterTarif),
+    pesantren: getTargetDinamis(santri, "pesantren", masterTarif),
+    sekolah: getTargetDinamis(santri, "sekolah", masterTarif),
+  }
+  const totalTargetBulanan = targetPerKategori.dapur + targetPerKategori.pesantren + targetPerKategori.sekolah
+
+  // Saring transaksi sesuai filter periode (jika dipilih)
+  const scopedTransaksi = transaksiSantri.filter(trx => {
+    const tahun = Number(trx?.tahun)
+    const bulan = Number(trx?.bulan)
+    if (filterTahun !== null && tahun !== filterTahun) return false
+    if (filterBulan !== null && bulan !== filterBulan) return false
+    return true
+  })
+
+  // Pisahkan total pembayaran syahriah vs lainnya dan agregasi syahriah per (tahun, bulan, kategori)
+  let totalPembayaranSyahriah = 0
+  let totalPembayaranLainnya = 0
+  const syahriahMap = new Map<string, number>()
+
+  for (const trx of scopedTransaksi) {
+    const jumlah = Number(trx?.jumlah_bayar) || 0
+    const kat = String(trx?.kategori || "").toLowerCase()
+    if (isSyahriah(kat)) {
+      totalPembayaranSyahriah += jumlah
+      const tahun = Number(trx?.tahun)
+      const bulan = Number(trx?.bulan)
+      if (tahun > 0 && bulan >= 1 && bulan <= 12) {
+        const key = `${tahun}-${bulan}-${kat}`
+        syahriahMap.set(key, (syahriahMap.get(key) || 0) + jumlah)
+      }
+    } else {
+      totalPembayaranLainnya += jumlah
+    }
+  }
+
+  const totalPembayaran = totalPembayaranSyahriah + totalPembayaranLainnya
+
+  // Tentukan daftar bulan wajib bayar sesuai periode yang dipilih
+  const startYM = parseYearMonth(santri.tanggal_mulai_tagihan || santri.tanggal_masuk)
+  const startIdx = startYM ? startYM.year * 12 + (startYM.month - 1) : null
+  const nowIdx = referenceDate.getFullYear() * 12 + referenceDate.getMonth()
+
+  const activeMonths: Array<{ year: number; month: number }> = []
+  let belumWajibBayar = false
+
+  if (startIdx !== null) {
+    if (filterTahun !== null && filterBulan !== null) {
+      // Filter bulan & tahun spesifik
+      const selectedIdx = filterTahun * 12 + (filterBulan - 1)
+      if (selectedIdx >= startIdx) {
+        activeMonths.push({ year: filterTahun, month: filterBulan })
+      } else {
+        belumWajibBayar = true
+      }
+    } else if (filterTahun !== null) {
+      // Filter tahun spesifik (semua bulan pada tahun tsb yang sudah wajib)
+      const yearStartIdx = filterTahun * 12
+      const yearEndIdx = filterTahun * 12 + 11
+      const effStart = Math.max(startIdx, yearStartIdx)
+      const effEnd = Math.min(nowIdx, yearEndIdx)
+      if (effEnd >= effStart) {
+        for (let idx = effStart; idx <= effEnd; idx++) {
+          activeMonths.push({ year: Math.floor(idx / 12), month: (idx % 12) + 1 })
+        }
+      } else if (yearEndIdx < startIdx) {
+        belumWajibBayar = true
+      }
+    } else if (filterBulan !== null) {
+      // Fallback jika hanya bulan yang diisi
+      if (nowIdx >= startIdx) {
+        for (let idx = startIdx; idx <= nowIdx; idx++) {
+          const month = (idx % 12) + 1
+          if (month === filterBulan) {
+            activeMonths.push({ year: Math.floor(idx / 12), month })
+          }
+        }
+      }
+    } else {
+      // Default: semua periode (dari mulai wajib bayar s/d bulan berjalan)
+      if (nowIdx >= startIdx) {
+        for (let idx = startIdx; idx <= nowIdx; idx++) {
+          activeMonths.push({ year: Math.floor(idx / 12), month: (idx % 12) + 1 })
+        }
+      } else {
+        belumWajibBayar = true
+      }
+    }
+  }
+
+  let bulanMenunggak = 0
+  let totalTunggakan = 0
+  let totalLebihBayar = 0
+  const sisaPerKategori = { dapur: 0, pesantren: 0, sekolah: 0 }
+  const activeKeys = new Set<string>()
+
+  for (const { year: th, month: bl } of activeMonths) {
+    let tunggakanBulanIni = 0
+
+    for (const kat of SYAHRIAH_KATEGORI) {
+      const key = `${th}-${bl}-${kat}`
+      activeKeys.add(key)
+      const target = targetPerKategori[kat]
+      const bayar = syahriahMap.get(key) || 0
+      const sisa = Math.max(0, target - bayar)
+      const lebih = Math.max(0, bayar - target)
+
+      sisaPerKategori[kat] += sisa
+      tunggakanBulanIni += sisa
+      totalTunggakan += sisa
+      totalLebihBayar += lebih
+    }
+
+    if (tunggakanBulanIni > 0) {
+      bulanMenunggak += 1
+    }
+  }
+
+  // Pembayaran syahriah untuk bulan di luar periode wajib (misalnya bayar bulan depan di muka)
+  // dicatat sebagai lebih bayar syahriah tanpa mengurangi tunggakan bulan wajib sebelumnya.
+  for (const [key, bayar] of syahriahMap.entries()) {
+    if (!activeKeys.has(key) && bayar > 0) {
+      totalLebihBayar += bayar
+    }
+  }
+
+  const jumlahBulan = activeMonths.length
+  const totalKewajiban = totalTargetBulanan * jumlahBulan
+
+  return {
+    totalPembayaran,
+    totalPembayaranSyahriah,
+    totalPembayaranLainnya,
+    jumlahBulan,
+    bulanMenunggak,
+    totalTargetBulanan,
+    totalKewajiban,
+    totalTunggakan,
+    totalLebihBayar,
+    sisaPerKategori,
+    belumWajibBayar,
+    statusLunas: totalKewajiban > 0 && totalTunggakan === 0,
+  }
+}
+
 export const cetakKwitansiPDF = async (s: any, filterBulan: number, filterTahun: number, pembayaranList: any[], masterTarif: any[]) => {
   const doc = new jsPDF('p', 'mm', [105, 148])
   const pageWidth = doc.internal.pageSize.getWidth()

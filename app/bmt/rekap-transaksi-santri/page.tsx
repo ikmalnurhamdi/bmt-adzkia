@@ -1,8 +1,9 @@
 "use client"
 
 import { useState, useEffect, useMemo, useCallback } from "react"
+import { Calendar, RotateCcw } from "lucide-react"
 import { getSupabase } from "@/lib/supabase"
-import { getTargetDinamis } from "@/modules/bmt/lib/transactionHelpers"
+import { BULAN_NAMES, hitungRekapTransaksiSantri } from "@/modules/bmt/lib/transactionHelpers"
 
 // Import komponen
 import Header from "@/modules/bmt/components/rekap-transaksi-santri/Header"
@@ -22,6 +23,10 @@ export default function RekapTransaksiSantriPage() {
   const [transaksiSantri, setTransaksiSantri] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [isLoadingTransaksi, setIsLoadingTransaksi] = useState(false)
+
+  // Default: tampilkan semua pembayaran santri (tidak terkunci per bulan)
+  const [filterBulan, setFilterBulan] = useState<number | "semua">("semua")
+  const [filterTahun, setFilterTahun] = useState<number | "semua">("semua")
 
   const loadInitialData = useCallback(async () => {
     setIsLoading(true)
@@ -51,7 +56,9 @@ export default function RekapTransaksiSantriPage() {
 
   const handleSelectSantri = async (santri: any) => {
     setSelectedSantri(santri)
-    setSearchTerm("") 
+    setSearchTerm("")
+    setFilterBulan("semua")
+    setFilterTahun("semua")
     setIsLoadingTransaksi(true)
     
     const supabase = getSupabase()
@@ -67,42 +74,92 @@ export default function RekapTransaksiSantriPage() {
     setIsLoadingTransaksi(false)
   }
 
-  const rekap = useMemo(() => {
-    if (!selectedSantri) return null
+  // Opsi tahun dinamis berdasarkan tahun mulai santri, tahun sekarang, dan tahun transaksi
+  const tahunOptions = useMemo(() => {
+    const currentYear = new Date().getFullYear()
+    const years = new Set<number>([currentYear])
 
-    const totalPembayaran = transaksiSantri.reduce((a, b) => a + (b.jumlah_bayar || 0), 0)
-    let jumlahBulan = 0
-    let tglMasukStr = selectedSantri.tanggal_masuk
-    
-    if (tglMasukStr) {
-      const start = new Date(tglMasukStr)
-      const now = new Date()
-      if (now >= start) {
-        const yearsDiff = now.getFullYear() - start.getFullYear()
-        const monthsDiff = now.getMonth() - start.getMonth()
-        jumlahBulan = (yearsDiff * 12) + monthsDiff + 1
+    const dateStr = selectedSantri?.tanggal_mulai_tagihan || selectedSantri?.tanggal_masuk
+    if (dateStr) {
+      const startYear = new Date(dateStr).getFullYear()
+      if (!Number.isNaN(startYear) && startYear > 2000) {
+        for (let y = startYear; y <= currentYear; y++) years.add(y)
       }
     }
 
-    const targetD = getTargetDinamis(selectedSantri, "dapur", masterTarif)
-    const targetP = getTargetDinamis(selectedSantri, "pesantren", masterTarif)
-    const targetS = getTargetDinamis(selectedSantri, "sekolah", masterTarif)
-    const totalTargetBulanan = targetD + targetP + targetS
+    transaksiSantri.forEach(t => {
+      const y = Number(t.tahun)
+      if (y > 2000) years.add(y)
+    })
 
-    const totalKewajiban = totalTargetBulanan * jumlahBulan
-    const totalTunggakan = Math.max(0, totalKewajiban - totalPembayaran)
-    const totalLebihBayar = Math.max(0, totalPembayaran - totalKewajiban)
+    return Array.from(years).sort((a, b) => b - a)
+  }, [selectedSantri, transaksiSantri])
 
-    return {
-      totalPembayaran,
-      jumlahBulan,
-      totalTargetBulanan,
-      totalKewajiban,
-      totalTunggakan,
-      totalLebihBayar,
-      statusLunas: totalKewajiban > 0 && totalPembayaran >= totalKewajiban
+  const handleChangeBulan = (val: string) => {
+    if (val === "semua") {
+      setFilterBulan("semua")
+      return
     }
-  }, [selectedSantri, transaksiSantri, masterTarif])
+    const bulanNum = Number(val)
+    setFilterBulan(bulanNum)
+    if (filterTahun === "semua") {
+      setFilterTahun(new Date().getFullYear())
+    }
+  }
+
+  const handleChangeTahun = (val: string) => {
+    if (val === "semua") {
+      setFilterTahun("semua")
+      setFilterBulan("semua")
+      return
+    }
+    setFilterTahun(Number(val))
+  }
+
+  const handleResetPeriode = () => {
+    setFilterBulan("semua")
+    setFilterTahun("semua")
+  }
+
+  const isPeriodeFiltered = filterBulan !== "semua" || filterTahun !== "semua"
+  const isSingleMonth = filterBulan !== "semua" && filterTahun !== "semua"
+
+  const periodeLabel = useMemo(() => {
+    if (filterBulan !== "semua" && filterTahun !== "semua") {
+      return `${BULAN_NAMES[filterBulan - 1]} ${filterTahun}`
+    }
+    if (filterTahun !== "semua") {
+      return `Tahun ${filterTahun}`
+    }
+    return "Semua Periode"
+  }, [filterBulan, filterTahun])
+
+  // Transaksi yang ditampilkan sesuai filter bulan & tahun (default: semua transaksi santri)
+  const transaksiPeriode = useMemo(() => {
+    return transaksiSantri.filter(trx => {
+      if (filterTahun !== "semua" && Number(trx.tahun) !== filterTahun) return false
+      if (filterBulan !== "semua" && Number(trx.bulan) !== filterBulan) return false
+      return true
+    })
+  }, [transaksiSantri, filterBulan, filterTahun])
+
+  // Masa aktif keseluruhan santri (untuk kartu profil)
+  const rekapKeseluruhan = useMemo(
+    () => hitungRekapTransaksiSantri(selectedSantri, transaksiSantri, masterTarif),
+    [selectedSantri, transaksiSantri, masterTarif]
+  )
+
+  // Rekap pembayaran & tunggakan sesuai periode yang dipilih (default = keseluruhan)
+  const rekap = useMemo(
+    () =>
+      isPeriodeFiltered
+        ? hitungRekapTransaksiSantri(selectedSantri, transaksiSantri, masterTarif, new Date(), {
+            bulan: filterBulan,
+            tahun: filterTahun,
+          })
+        : rekapKeseluruhan,
+    [isPeriodeFiltered, selectedSantri, transaksiSantri, masterTarif, filterBulan, filterTahun, rekapKeseluruhan]
+  )
 
   if (!mounted) return null
 
@@ -121,22 +178,74 @@ export default function RekapTransaksiSantriPage() {
       
       {/* 
         Area ini muncul hanya jika santri sudah dipilih.
-        Semua info profil, metrik tagihan, dan tabel transaksi dimasukkan ke sini.
+        Default menampilkan semua pembayaran santri; filter bulan & tahun langsung menyaring tabel serta total pembayaran & tunggakan.
       */}
       {selectedSantri && (
         <div className="space-y-4 animate-in slide-in-from-bottom-4 duration-500">
+
+          {/* Filter Periode (Semua Periode / Per Tahun / Per Bulan & Tahun) */}
+          <div className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <div className="bg-sky-50 text-sky-600 p-1.5 rounded-lg border border-sky-100">
+                <Calendar size={15} />
+              </div>
+              <div>
+                <p className="text-xs font-bold text-slate-700 leading-tight">Filter Periode Rekap</p>
+                <p className="text-[10px] text-slate-400 font-medium">
+                  Menampilkan: <span className="font-semibold text-sky-600">{periodeLabel}</span>
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                aria-label="Filter Bulan"
+                value={filterBulan}
+                onChange={e => handleChangeBulan(e.target.value)}
+                className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 bg-slate-50 text-slate-700 focus:outline-none focus:border-sky-500 focus:bg-white cursor-pointer"
+              >
+                <option value="semua">Semua Bulan</option>
+                {BULAN_NAMES.map((nama, idx) => (
+                  <option key={nama} value={idx + 1}>{nama}</option>
+                ))}
+              </select>
+
+              <select
+                aria-label="Filter Tahun"
+                value={filterTahun}
+                onChange={e => handleChangeTahun(e.target.value)}
+                className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 bg-slate-50 text-slate-700 focus:outline-none focus:border-sky-500 focus:bg-white cursor-pointer"
+              >
+                <option value="semua">Semua Tahun</option>
+                {tahunOptions.map(thn => (
+                  <option key={thn} value={thn}>{thn}</option>
+                ))}
+              </select>
+
+              {isPeriodeFiltered && (
+                <button
+                  type="button"
+                  onClick={handleResetPeriode}
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-sky-700 bg-sky-50 hover:bg-sky-100 border border-sky-200 rounded-lg transition-colors"
+                >
+                  <RotateCcw size={12} /> Semua Periode
+                </button>
+              )}
+            </div>
+          </div>
           
           {/* Kartu Profil & Metrik Tunggakan/Lunas */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            <SantriProfileCard santri={selectedSantri} jumlahBulan={rekap?.jumlahBulan || 0} />
-            <MetricCards rekap={rekap} />
+            <SantriProfileCard santri={selectedSantri} jumlahBulan={rekapKeseluruhan?.jumlahBulan || 0} />
+            <MetricCards rekap={rekap} periodeLabel={periodeLabel} isSingleMonth={isSingleMonth} />
           </div>
           
-          {/* Tabel Transaksi yang sudah terintegrasi fitur Filter & Export */}
+          {/* Tabel Transaksi yang terintegrasi dengan Filter Periode, Kategori, Pencarian & Export */}
           <TransactionTable 
-            transaksi={transaksiSantri} 
+            transaksi={transaksiPeriode} 
             isLoading={isLoadingTransaksi} 
-            santriName={selectedSantri.nama_lengkap || selectedSantri.nama} // Nama untuk file PDF/Excel
+            santriName={selectedSantri.nama_lengkap || selectedSantri.nama}
+            periodeLabel={periodeLabel}
           />
 
         </div>

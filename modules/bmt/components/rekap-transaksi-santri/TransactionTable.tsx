@@ -15,13 +15,18 @@ const BULAN_NAMES = [
 interface TransactionTableProps {
   transaksi: any[]
   isLoading: boolean
-  santriName?: string // Tambahan opsional untuk nama file nanti
+  santriName?: string
+  periodeLabel?: string
 }
 
-export default function TransactionTable({ transaksi = [], isLoading, santriName = "Santri" }: TransactionTableProps) {
+export default function TransactionTable({
+  transaksi = [],
+  isLoading,
+  santriName = "Santri",
+  periodeLabel = "Semua Periode",
+}: TransactionTableProps) {
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedKategori, setSelectedKategori] = useState("semua")
-  const [selectedTahun, setSelectedTahun] = useState("semua")
 
   // Opsi kategori unik otomatis dari data
   const kategoriOptions = useMemo(() => {
@@ -32,20 +37,10 @@ export default function TransactionTable({ transaksi = [], isLoading, santriName
     return Array.from(set)
   }, [transaksi])
 
-  // Opsi tahun unik otomatis dari data
-  const tahunOptions = useMemo(() => {
-    const set = new Set<string | number>()
-    transaksi.forEach(t => {
-      if (t.tahun) set.add(t.tahun)
-    })
-    return Array.from(set).sort((a, b) => Number(b) - Number(a))
-  }, [transaksi])
-
   // Filter logika transaksi
   const filteredTransaksi = useMemo(() => {
     return transaksi.filter(trx => {
       if (selectedKategori !== "semua" && trx.kategori?.toLowerCase() !== selectedKategori.toLowerCase()) return false
-      if (selectedTahun !== "semua" && String(trx.tahun) !== String(selectedTahun)) return false
       
       if (searchTerm.trim() !== "") {
         const query = searchTerm.toLowerCase()
@@ -67,15 +62,16 @@ export default function TransactionTable({ transaksi = [], isLoading, santriName
       }
       return true
     })
-  }, [transaksi, searchTerm, selectedKategori, selectedTahun])
+  }, [transaksi, searchTerm, selectedKategori])
 
   const handleResetFilter = () => {
     setSearchTerm("")
     setSelectedKategori("semua")
-    setSelectedTahun("semua")
   }
 
-  const isFiltered = searchTerm !== "" || selectedKategori !== "semua" || selectedTahun !== "semua"
+  const isFiltered = searchTerm !== "" || selectedKategori !== "semua"
+
+  const periodeFileSuffix = periodeLabel === "Semua Periode" ? "" : `_${periodeLabel.replace(/\s+/g, '_')}`
 
   // ==========================================
   // FITUR EXPORT EXCEL
@@ -101,7 +97,7 @@ export default function TransactionTable({ transaksi = [], isLoading, santriName
     XLSX.utils.book_append_sheet(workbook, worksheet, "Riwayat Transaksi");
 
     // 3. Download File
-    XLSX.writeFile(workbook, `Rekap_Transaksi_${santriName.replace(/\s+/g, '_')}.xlsx`);
+    XLSX.writeFile(workbook, `Rekap_Transaksi_${santriName.replace(/\s+/g, '_')}${periodeFileSuffix}.xlsx`);
   }
 
   // ==========================================
@@ -117,7 +113,7 @@ export default function TransactionTable({ transaksi = [], isLoading, santriName
     doc.text(`Laporan Transaksi Santri - ${santriName}`, 14, 15);
     doc.setFontSize(10);
     doc.setTextColor(100);
-    doc.text(`Dicetak pada: ${new Date().toLocaleString('id-ID')}`, 14, 22);
+    doc.text(`Periode: ${periodeLabel} | Dicetak pada: ${new Date().toLocaleString('id-ID')}`, 14, 22);
 
     // Siapkan Data Tabel
     const tableColumn = ["No", "Tanggal Input", "Periode", "Kategori", "Keterangan", "Nominal", "Status"];
@@ -143,7 +139,7 @@ export default function TransactionTable({ transaksi = [], isLoading, santriName
     });
 
     // Download File
-    doc.save(`Rekap_Transaksi_${santriName.replace(/\s+/g, '_')}.pdf`);
+    doc.save(`Rekap_Transaksi_${santriName.replace(/\s+/g, '_')}${periodeFileSuffix}.pdf`);
   }
 
   return (
@@ -158,7 +154,7 @@ export default function TransactionTable({ transaksi = [], isLoading, santriName
           <div>
             <h3 className="font-bold text-slate-700 text-xs">Rincian Transaksi Santri</h3>
             <p className="text-[10px] text-slate-400 font-medium">
-              Menampilkan {filteredTransaksi.length} transaksi
+              Menampilkan {filteredTransaksi.length} transaksi · {periodeLabel}
             </p>
           </div>
         </div>
@@ -186,11 +182,6 @@ export default function TransactionTable({ transaksi = [], isLoading, santriName
             <select value={selectedKategori} onChange={e => setSelectedKategori(e.target.value)} className="px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 bg-white text-slate-600 focus:outline-none focus:border-sky-500 cursor-pointer capitalize">
               <option value="semua">Semua Kategori</option>
               {kategoriOptions.map(kat => <option key={kat} value={kat} className="capitalize">{kat}</option>)}
-            </select>
-
-            <select value={selectedTahun} onChange={e => setSelectedTahun(e.target.value)} className="px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 bg-white text-slate-600 focus:outline-none focus:border-sky-500 cursor-pointer">
-              <option value="semua">Semua Tahun</option>
-              {tahunOptions.map(thn => <option key={thn} value={thn}>{thn}</option>)}
             </select>
 
             {isFiltered && (
